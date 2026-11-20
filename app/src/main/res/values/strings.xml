@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Smart Solar</string>
+    <string name="app_name_ar">الطاقة الشمسية الذكية</string>
+    <string name="tagline">حلول الطاقة الشمسية المتكاملة للمنازل والأعمال</string>
+    <string name="btn_next">التالي</string>
+    <string name="btn_skip">تخطي</string>
+    <string name="btn_start">البدء</string>
+    <string name="btn_retry">إعادة المحاولة</string>
+    <string name="btn_server_settings">إعدادات الخادم</string>
+    <string name="loading_message">جاري التحميل...</string>
+    <string name="no_internet_message">لا يوجد اتصال بالإنترنت. يرجى التحقق من الشبكة والمحاولة مجدداً.</string>
+    <string name="server_not_configured">لم يتم تحديد عنوان خادم PHP بعد. يرجى ضبط عنوان الخادم من الإعدادات.</string>
+    <string name="session_expired_message">انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.</string>
+</resources>

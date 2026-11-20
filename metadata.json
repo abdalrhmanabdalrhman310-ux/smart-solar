@@ -1,0 +1,6 @@
+{
+  "name": "Smart Solar",
+  "description": "تطبيق الطاقة الشمسية الذكية المتكامل للعملاء والمهندسين والبائعين",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
