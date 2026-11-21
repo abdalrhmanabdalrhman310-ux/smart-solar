@@ -4,24 +4,39 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.smartsolar.app.data.local.SessionPreferencesManager
+import com.smartsolar.app.data.local.StoredCookieDto
+import com.squareup.moshi.FromJson
 import com.squareup.moshi.JsonDataException
 import com.squareup.moshi.JsonEncodingException
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
 import com.squareup.moshi.Moshi
+import com.squareup.moshi.ToJson
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.io.IOException
 import java.net.ConnectException
+import java.net.Inet4Address
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
@@ -31,6 +46,233 @@ class ServerUrlNotConfiguredException : IOException("PHP Server URL is not confi
 
 class SessionExpiredException : IOException("Session expired")
 
+/**
+ * Lenient Moshi adapters for PHP/MySQL JSON output where numeric and boolean fields
+ * are frequently serialized as strings ("42", "185.50", "1", "0") or 0/1 ints.
+ */
+object LenientPhpMoshiAdapters {
+
+    private fun readScalarAsString(reader: JsonReader): String? {
+        return when (reader.peek()) {
+            JsonReader.Token.NULL -> {
+                reader.nextNull<Unit>()
+                null
+            }
+            JsonReader.Token.BOOLEAN -> reader.nextBoolean().toString()
+            JsonReader.Token.NUMBER, JsonReader.Token.STRING -> reader.nextString()
+            else -> {
+                reader.skipValue()
+                null
+            }
+        }
+    }
+
+    object BooleanAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Boolean {
+            return parseBoolean(readScalarAsString(reader)) ?: false
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Boolean) {
+            writer.value(value)
+        }
+    }
+
+    object NullableBooleanAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Boolean? {
+            return parseBoolean(readScalarAsString(reader))
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Boolean?) {
+            if (value == null) writer.nullValue() else writer.value(value)
+        }
+    }
+
+    object IntAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Int {
+            val raw = readScalarAsString(reader)?.trim() ?: return 0
+            return raw.toIntOrNull() ?: raw.toDoubleOrNull()?.toInt() ?: 0
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Int) {
+            writer.value(value)
+        }
+    }
+
+    object NullableIntAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Int? {
+            val raw = readScalarAsString(reader)?.trim()
+            if (raw.isNullOrBlank()) return null
+            return raw.toIntOrNull() ?: raw.toDoubleOrNull()?.toInt()
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Int?) {
+            if (value == null) writer.nullValue() else writer.value(value)
+        }
+    }
+
+    object LongAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Long {
+            val raw = readScalarAsString(reader)?.trim() ?: return 0L
+            return raw.toLongOrNull() ?: raw.toDoubleOrNull()?.toLong() ?: 0L
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Long) {
+            writer.value(value)
+        }
+    }
+
+    object NullableLongAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Long? {
+            val raw = readScalarAsString(reader)?.trim()
+            if (raw.isNullOrBlank()) return null
+            return raw.toLongOrNull() ?: raw.toDoubleOrNull()?.toLong()
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Long?) {
+            if (value == null) writer.nullValue() else writer.value(value)
+        }
+    }
+
+    object DoubleAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Double {
+            val raw = readScalarAsString(reader)?.trim() ?: return 0.0
+            return raw.toDoubleOrNull() ?: 0.0
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Double) {
+            writer.value(value)
+        }
+    }
+
+    object NullableDoubleAdapter {
+        @FromJson
+        fun fromJson(reader: JsonReader): Double? {
+            val raw = readScalarAsString(reader)?.trim()
+            if (raw.isNullOrBlank()) return null
+            return raw.toDoubleOrNull()
+        }
+
+        @ToJson
+        fun toJson(writer: JsonWriter, value: Double?) {
+            if (value == null) writer.nullValue() else writer.value(value)
+        }
+    }
+
+    private fun parseBoolean(raw: String?): Boolean? {
+        if (raw == null) return null
+        return when (raw.trim().lowercase()) {
+            "true", "1", "yes", "on" -> true
+            "false", "0", "no", "off", "" -> false
+            else -> raw.toDoubleOrNull()?.let { it != 0.0 }
+        }
+    }
+}
+
+/**
+ * Maintains PHP session cookies (e.g. PHPSESSID) across API calls and persists them
+ * in DataStore alongside the active session.
+ */
+class PhpSessionCookieJar(
+    private val sessionPreferences: SessionPreferencesManager
+) : CookieJar {
+    private val lock = Any()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    @Volatile
+    private var loadedFromStore = false
+    private val cookieStore = mutableListOf<Cookie>()
+
+    private fun ensureLoaded() {
+        if (!loadedFromStore) {
+            synchronized(lock) {
+                if (!loadedFromStore) {
+                    val saved = runBlocking { sessionPreferences.getSavedCookies() }
+                    val now = System.currentTimeMillis()
+                    cookieStore.clear()
+                    saved.filter { it.expiresAt > now }.forEach { dto ->
+                        val builder = Cookie.Builder()
+                            .name(dto.name)
+                            .value(dto.value)
+                            .path(dto.path)
+                            .expiresAt(dto.expiresAt)
+                        if (dto.hostOnly) builder.hostOnlyDomain(dto.domain) else builder.domain(dto.domain)
+                        if (dto.secure) builder.secure()
+                        if (dto.httpOnly) builder.httpOnly()
+                        cookieStore.add(builder.build())
+                    }
+                    loadedFromStore = true
+                }
+            }
+        }
+    }
+
+    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+        if (cookies.isEmpty()) return
+        ensureLoaded()
+        val snapshot: List<StoredCookieDto>
+        synchronized(lock) {
+            val now = System.currentTimeMillis()
+            cookieStore.removeAll { it.expiresAt <= now }
+            for (incoming in cookies) {
+                cookieStore.removeAll {
+                    it.name == incoming.name && it.domain == incoming.domain && it.path == incoming.path
+                }
+                if (incoming.expiresAt > now && incoming.value.isNotEmpty()) {
+                    cookieStore.add(incoming)
+                }
+            }
+            snapshot = cookieStore.map {
+                StoredCookieDto(
+                    name = it.name,
+                    value = it.value,
+                    domain = it.domain,
+                    path = it.path,
+                    expiresAt = it.expiresAt,
+                    secure = it.secure,
+                    httpOnly = it.httpOnly,
+                    hostOnly = it.hostOnly
+                )
+            }
+        }
+        scope.launch {
+            sessionPreferences.saveCookies(snapshot)
+        }
+    }
+
+    override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        ensureLoaded()
+        synchronized(lock) {
+            val now = System.currentTimeMillis()
+            cookieStore.removeAll { it.expiresAt <= now }
+            return cookieStore.filter { it.matches(url) }
+        }
+    }
+
+    fun clear() {
+        synchronized(lock) {
+            cookieStore.clear()
+            loadedFromStore = true
+        }
+        scope.launch {
+            sessionPreferences.clearCookies()
+        }
+    }
+}
+
 class NetworkClientFactory(
     private val context: Context,
     private val sessionPreferences: SessionPreferencesManager,
@@ -38,6 +280,8 @@ class NetworkClientFactory(
 ) {
     private val _sessionExpiredEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val sessionExpiredEvents: SharedFlow<Unit> = _sessionExpiredEvents.asSharedFlow()
+
+    val cookieJar = PhpSessionCookieJar(sessionPreferences)
 
     private val dynamicBaseUrlInterceptor = Interceptor { chain ->
         val originalRequest = chain.request()
@@ -49,7 +293,7 @@ class NetworkClientFactory(
         val targetBase = config.baseUrl.toHttpUrlOrNull()
             ?: throw IOException("تنسيق عنوان خادم PHP غير صالح: ${config.baseUrl}")
 
-        // Placeholder base url used by Retrofit is http://unconfigured.invalid/
+        // Placeholder base url used by Retrofit is https://unconfigured.invalid/
         val encodedSegments = originalRequest.url.encodedPathSegments.filter { it.isNotEmpty() }
         val newUrlBuilder = targetBase.newBuilder()
         encodedSegments.forEach { segment ->
@@ -70,7 +314,7 @@ class NetworkClientFactory(
         val token = runBlocking { sessionPreferences.getCurrentAuthToken() }
         val requestBuilder = chain.request().newBuilder()
             .header("Accept", "application/json")
-        if (token.isNotBlank()) {
+        if (token.isNotBlank() && token != "php_session") {
             requestBuilder.header("Authorization", "Bearer $token")
             requestBuilder.header("X-Session-Token", token)
         }
@@ -80,6 +324,25 @@ class NetworkClientFactory(
             _sessionExpiredEvents.tryEmit(Unit)
         }
         response
+    }
+
+    /**
+     * Normalizes common PHP JSON response shapes without touching non-JSON / error HTML bodies:
+     * - Strips UTF-8 BOM if emitted by PHP files
+     * - Wraps direct array payloads `{"success": true, "data": [...]}` into `{"items": [...]}`
+     *   for list endpoints, or promotes top-level list keys into `data`.
+     */
+    private val phpResponseNormalizationInterceptor = Interceptor { chain ->
+        val response = chain.proceed(chain.request())
+        val body = response.body ?: return@Interceptor response
+        val contentType = body.contentType()
+        val rawString = body.string()
+        val normalized = normalizePhpJsonBody(
+            path = response.request.url.encodedPath,
+            rawBody = rawString
+        )
+        val newBody = normalized.toResponseBody(contentType ?: "application/json; charset=utf-8".toMediaTypeOrNull())
+        response.newBuilder().body(newBody).build()
     }
 
     private val dynamicTimeoutInterceptor = Interceptor { chain ->
@@ -99,9 +362,11 @@ class NetworkClientFactory(
     }
 
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .cookieJar(cookieJar)
         .addInterceptor(dynamicTimeoutInterceptor)
         .addInterceptor(dynamicBaseUrlInterceptor)
         .addInterceptor(sessionAuthInterceptor)
+        .addInterceptor(phpResponseNormalizationInterceptor)
         .addInterceptor(loggingInterceptor)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -116,12 +381,51 @@ class NetworkClientFactory(
 
     val apiService: SolarApiService = retrofit.create(SolarApiService::class.java)
 
-    fun isNetworkAvailable(): Boolean {
+    fun isNetworkAvailable(targetBaseUrl: String = ""): Boolean {
+        if (isLocalDevUrl(targetBaseUrl)) {
+            return true
+        }
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return false
         val network = cm.activeNetwork ?: return false
         val capabilities = cm.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) ||
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+    }
+
+    suspend fun resolveAssetUrl(rawUrl: String?): String {
+        val trimmed = rawUrl?.trim().orEmpty()
+        if (trimmed.isBlank()) return ""
+        if (
+            trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.startsWith("content://", ignoreCase = true) ||
+            trimmed.startsWith("file://", ignoreCase = true)
+        ) {
+            return trimmed
+        }
+        val baseUrl = sessionPreferences.getCurrentServerConfig().baseUrl
+        val httpBase = baseUrl.toHttpUrlOrNull() ?: return trimmed
+        if (trimmed.startsWith("/")) {
+            return httpBase.newBuilder()
+                .encodedPath(trimmed)
+                .query(null)
+                .build()
+                .toString()
+        }
+        // Standard PHP setup: base URL is http://host/solar-admin/api/ and uploads live under /solar-admin/uploads/
+        val baseForRelative = if (
+            trimmed.startsWith("uploads/", ignoreCase = true) &&
+            httpBase.encodedPath.endsWith("/api/", ignoreCase = true)
+        ) {
+            httpBase.resolve("../") ?: httpBase
+        } else {
+            httpBase
+        }
+        return baseForRelative.resolve(trimmed)?.toString() ?: trimmed
     }
 
     suspend fun <T> safeApiCall(
@@ -139,10 +443,10 @@ class NetworkClientFactory(
             )
         }
 
-        if (!isNetworkAvailable()) {
+        if (!isNetworkAvailable(config.baseUrl)) {
             return NetworkResult.Error(
                 type = NetworkErrorType.NO_INTERNET,
-                arabicMessage = "لا يوجد اتصال بالإنترنت. يرجى التحقق من الشبكة والمحاولة مرة أخرى.",
+                arabicMessage = "لا يوجد اتصال بالشبكة. يرجى التحقق من اتصال الواي فاي أو البيانات والمحاولة مرة أخرى.",
                 phpEndpoint = endpointName
             )
         }
@@ -165,7 +469,7 @@ class NetworkClientFactory(
         } catch (e: UnknownHostException) {
             NetworkResult.Error(
                 type = NetworkErrorType.NO_INTERNET,
-                arabicMessage = "تعذر الوصول إلى اسم النطاق أو عنوان الخادم. تأكد من صحة الرابط والإنترنت.",
+                arabicMessage = "تعذر الوصول إلى اسم النطاق أو عنوان الخادم. تأكد من صحة الرابط والشبكة.",
                 technicalDetail = e.localizedMessage.orEmpty(),
                 phpEndpoint = endpointName
             )
@@ -244,7 +548,95 @@ class NetworkClientFactory(
 
     companion object {
         fun buildMoshi(): Moshi = Moshi.Builder()
+            .add(LenientPhpMoshiAdapters.BooleanAdapter)
+            .add(LenientPhpMoshiAdapters.NullableBooleanAdapter)
+            .add(LenientPhpMoshiAdapters.IntAdapter)
+            .add(LenientPhpMoshiAdapters.NullableIntAdapter)
+            .add(LenientPhpMoshiAdapters.LongAdapter)
+            .add(LenientPhpMoshiAdapters.NullableLongAdapter)
+            .add(LenientPhpMoshiAdapters.DoubleAdapter)
+            .add(LenientPhpMoshiAdapters.NullableDoubleAdapter)
             .addLast(KotlinJsonAdapterFactory())
             .build()
+
+        internal fun isLocalDevUrl(baseUrl: String): Boolean {
+            val host = baseUrl.toHttpUrlOrNull()?.host?.lowercase() ?: return false
+            if (host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2") return true
+            val parts = host.split(".")
+            if (parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 }) {
+                val a = parts[0].toInt()
+                val b = parts[1].toInt()
+                return a == 10 || (a == 192 && b == 168) || (a == 172 && b in 16..31)
+            }
+            return runCatching {
+                val addr = Inet4Address.getByName(host)
+                addr.isSiteLocalAddress || addr.isLoopbackAddress
+            }.getOrDefault(false)
+        }
+
+        private val genericJsonAdapter = Moshi.Builder().build().adapter<Any>(Any::class.java)
+
+        @Suppress("UNCHECKED_CAST")
+        internal fun normalizePhpJsonBody(path: String, rawBody: String): String {
+            val clean = rawBody.trimStart('\uFEFF').trim()
+            if (clean.isEmpty()) return rawBody
+            if (!clean.startsWith("[") && !clean.startsWith("{")) return rawBody
+
+            return runCatching {
+                val parsed = genericJsonAdapter.fromJson(clean) ?: return@runCatching clean
+                when (parsed) {
+                    is List<*> -> genericJsonAdapter.toJson(
+                        mapOf(
+                            "success" to true,
+                            "data" to mapOf("items" to parsed)
+                        )
+                    )
+                    is Map<*, *> -> {
+                        val mutableObj = parsed.entries.associate { (k, v) -> k.toString() to v }.toMutableMap()
+                        val dataVal = mutableObj["data"]
+                        var modified = clean != rawBody
+                        when {
+                            dataVal is List<*> -> {
+                                mutableObj["data"] = mapOf("items" to dataVal)
+                                modified = true
+                            }
+                            dataVal == null -> {
+                                val listKeys = listOf(
+                                    "products", "orders", "engineers",
+                                    "installations", "maintenance", "tasks",
+                                    "designs", "ratings", "notifications", "items"
+                                )
+                                val foundListKey = listKeys.firstOrNull { mutableObj[it] is List<*> }
+                                if (foundListKey != null) {
+                                    val wrapper = mutableMapOf<String, Any?>(
+                                        foundListKey to mutableObj[foundListKey]
+                                    )
+                                    if (mutableObj.containsKey("total_sales")) {
+                                        wrapper["total_sales"] = mutableObj["total_sales"]
+                                    }
+                                    mutableObj["data"] = wrapper
+                                    modified = true
+                                } else if (path.endsWith(PhpEndpointContract.FILE_SETTINGS) && mutableObj.containsKey("site_name")) {
+                                    val wrapper = mutableMapOf<String, Any?>()
+                                    listOf(
+                                        "site_name",
+                                        "require_engineer_approval",
+                                        "require_vendor_approval",
+                                        "require_commercial_register",
+                                        "currency"
+                                    ).forEach { key ->
+                                        if (mutableObj.containsKey(key)) wrapper[key] = mutableObj[key]
+                                    }
+                                    mutableObj["data"] = wrapper
+                                    modified = true
+                                }
+                            }
+                        }
+                        if (modified) genericJsonAdapter.toJson(mutableObj) else clean
+                    }
+                    else -> clean
+                }
+            }.getOrDefault(clean)
+        }
     }
 }

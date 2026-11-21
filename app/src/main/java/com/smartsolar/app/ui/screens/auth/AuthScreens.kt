@@ -26,6 +26,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.LocationCity
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
@@ -69,6 +71,7 @@ import com.smartsolar.app.data.remote.NetworkResult
 import com.smartsolar.app.domain.model.ServerConfig
 import com.smartsolar.app.domain.model.UserSession
 import com.smartsolar.app.ui.components.InlineResultBanner
+import com.smartsolar.app.ui.components.MultiAttachmentPickerField
 import com.smartsolar.app.ui.components.MultiImagePickerField
 import com.smartsolar.app.ui.components.SingleImagePickerField
 import com.smartsolar.app.ui.components.SolarCard
@@ -245,23 +248,23 @@ fun AuthScreen(
                         )
                         AuthModeTab.CLIENT_REGISTER -> ClientRegisterForm(
                             isLoading = isLoading,
-                            onSubmit = { name, email, phone, pass, confirmPass, address ->
-                                authViewModel.registerClient(name, email, phone, pass, confirmPass, address)
+                            onSubmit = { name, email, phone, city, pass, confirmPass, address ->
+                                authViewModel.registerClient(name, email, phone, city, pass, confirmPass, address)
                             }
                         )
                         AuthModeTab.ENGINEER_REGISTER -> EngineerRegisterForm(
                             isLoading = isLoading,
-                            onSubmit = { name, email, phone, pass, spec, qual, years, bio, avatar, portfolio, certs ->
+                            onSubmit = { name, age, email, phone, city, pass, spec, qual, years, bio, projects, avatar, portfolio, certs ->
                                 authViewModel.registerEngineer(
-                                    name, email, phone, pass, spec, qual, years, bio, avatar, portfolio, certs
+                                    name, age, email, phone, city, pass, spec, qual, years, bio, projects, avatar, portfolio, certs
                                 )
                             }
                         )
                         AuthModeTab.VENDOR_REGISTER -> VendorRegisterForm(
                             isLoading = isLoading,
-                            onSubmit = { vendorName, email, phone, pass, storeName, commReg, logo, storeImg ->
+                            onSubmit = { vendorName, email, phone, city, storeAddress, pass, storeName, businessType, storeDesc, commReg, logo, storeImg ->
                                 authViewModel.registerVendor(
-                                    vendorName, email, phone, pass, storeName, commReg, logo, storeImg
+                                    vendorName, email, phone, city, storeAddress, pass, storeName, businessType, storeDesc, commReg, logo, storeImg
                                 )
                             }
                         )
@@ -358,14 +361,16 @@ private fun LoginForm(
 @Composable
 private fun ClientRegisterForm(
     isLoading: Boolean,
-    onSubmit: (String, String, String, String, String, String) -> Unit
+    onSubmit: (String, String, String, String, String, String, String) -> Unit
 ) {
     var fullName by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
+    var city by rememberSaveable { mutableStateOf("") }
+    var address by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var confirmPassword by rememberSaveable { mutableStateOf("") }
-    var address by rememberSaveable { mutableStateOf("") }
+    var showPassword by rememberSaveable { mutableStateOf(false) }
 
     Text(
         text = "إنشاء حساب عميل جديد",
@@ -399,9 +404,18 @@ private fun ClientRegisterForm(
         modifier = Modifier.fillMaxWidth().testTag("client_reg_phone_input")
     )
     OutlinedTextField(
+        value = city,
+        onValueChange = { city = it },
+        label = { Text("المدينة") },
+        leadingIcon = { Icon(Icons.Default.LocationCity, contentDescription = null) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("client_reg_city_input")
+    )
+    OutlinedTextField(
         value = address,
         onValueChange = { address = it },
         label = { Text("العنوان") },
+        leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth().testTag("client_reg_address_input")
     )
@@ -409,7 +423,16 @@ private fun ClientRegisterForm(
         value = password,
         onValueChange = { password = it },
         label = { Text("كلمة المرور") },
-        visualTransformation = PasswordVisualTransformation(),
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        trailingIcon = {
+            IconButton(onClick = { showPassword = !showPassword }) {
+                Icon(
+                    imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                    contentDescription = if (showPassword) "إخفاء كلمة المرور" else "إظهار كلمة المرور"
+                )
+            }
+        },
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         singleLine = true,
         modifier = Modifier.fillMaxWidth().testTag("client_reg_password_input")
@@ -418,13 +441,14 @@ private fun ClientRegisterForm(
         value = confirmPassword,
         onValueChange = { confirmPassword = it },
         label = { Text("تأكيد كلمة المرور") },
-        visualTransformation = PasswordVisualTransformation(),
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+        visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         singleLine = true,
         modifier = Modifier.fillMaxWidth().testTag("client_reg_confirm_password_input")
     )
     Button(
-        onClick = { onSubmit(fullName, email, phone, password, confirmPassword, address) },
+        onClick = { onSubmit(fullName, email, phone, city, password, confirmPassword, address) },
         enabled = !isLoading,
         modifier = Modifier
             .fillMaxWidth()
@@ -443,16 +467,19 @@ private fun ClientRegisterForm(
 @Composable
 private fun EngineerRegisterForm(
     isLoading: Boolean,
-    onSubmit: (String, String, String, String, String, String, String, String, Uri?, List<Uri>, List<Uri>) -> Unit
+    onSubmit: (String, String, String, String, String, String, String, String, String, String, String, Uri?, List<Uri>, List<Uri>) -> Unit
 ) {
     var fullName by rememberSaveable { mutableStateOf("") }
+    var age by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
+    var city by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var specialization by rememberSaveable { mutableStateOf("") }
     var qualification by rememberSaveable { mutableStateOf("") }
     var yearsExperience by rememberSaveable { mutableStateOf("") }
     var bio by rememberSaveable { mutableStateOf("") }
+    var previousProjects by rememberSaveable { mutableStateOf("") }
     var avatarUri by remember { mutableStateOf<Uri?>(null) }
     var portfolioUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var certificateUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -475,6 +502,22 @@ private fun EngineerRegisterForm(
         modifier = Modifier.fillMaxWidth().testTag("eng_reg_name_input")
     )
     OutlinedTextField(
+        value = age,
+        onValueChange = { age = it },
+        label = { Text("العمر") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("eng_reg_age_input")
+    )
+    OutlinedTextField(
+        value = phone,
+        onValueChange = { phone = it },
+        label = { Text("رقم الهاتف") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("eng_reg_phone_input")
+    )
+    OutlinedTextField(
         value = email,
         onValueChange = { email = it },
         label = { Text("البريد الإلكتروني") },
@@ -483,12 +526,11 @@ private fun EngineerRegisterForm(
         modifier = Modifier.fillMaxWidth().testTag("eng_reg_email_input")
     )
     OutlinedTextField(
-        value = phone,
-        onValueChange = { phone = it },
-        label = { Text("الهاتف") },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+        value = city,
+        onValueChange = { city = it },
+        label = { Text("المدينة") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().testTag("eng_reg_phone_input")
+        modifier = Modifier.fillMaxWidth().testTag("eng_reg_city_input")
     )
     OutlinedTextField(
         value = password,
@@ -499,18 +541,18 @@ private fun EngineerRegisterForm(
         modifier = Modifier.fillMaxWidth().testTag("eng_reg_password_input")
     )
     OutlinedTextField(
-        value = specialization,
-        onValueChange = { specialization = it },
-        label = { Text("التخصص (مثلاً: تصميم وتركيب الأنظمة الهجينة)") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().testTag("eng_reg_spec_input")
-    )
-    OutlinedTextField(
         value = qualification,
         onValueChange = { qualification = it },
         label = { Text("المؤهل العلمي") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth().testTag("eng_reg_qual_input")
+    )
+    OutlinedTextField(
+        value = specialization,
+        onValueChange = { specialization = it },
+        label = { Text("التخصص (مثلاً: تصميم وتركيب الأنظمة الهجينة)") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("eng_reg_spec_input")
     )
     OutlinedTextField(
         value = yearsExperience,
@@ -523,9 +565,16 @@ private fun EngineerRegisterForm(
     OutlinedTextField(
         value = bio,
         onValueChange = { bio = it },
-        label = { Text("نبذة تعريفية عن الخبرات") },
+        label = { Text("نبذة عن الخبرات") },
         minLines = 3,
         modifier = Modifier.fillMaxWidth().testTag("eng_reg_bio_input")
+    )
+    OutlinedTextField(
+        value = previousProjects,
+        onValueChange = { previousProjects = it },
+        label = { Text("الأعمال والمشاريع السابقة") },
+        minLines = 3,
+        modifier = Modifier.fillMaxWidth().testTag("eng_reg_projects_input")
     )
 
     SingleImagePickerField(
@@ -540,18 +589,18 @@ private fun EngineerRegisterForm(
         onImagesChanged = { portfolioUris = it },
         testTag = "eng_reg_portfolio_picker"
     )
-    MultiImagePickerField(
-        label = "الشهادات والاعتمادات",
+    MultiAttachmentPickerField(
+        label = "الشهادات والمرفقات (إن وجدت)",
         selectedUris = certificateUris,
-        onImagesChanged = { certificateUris = it },
+        onAttachmentsChanged = { certificateUris = it },
         testTag = "eng_reg_certificates_picker"
     )
 
     Button(
         onClick = {
             onSubmit(
-                fullName, email, phone, password, specialization,
-                qualification, yearsExperience, bio, avatarUri, portfolioUris, certificateUris
+                fullName, age, email, phone, city, password, specialization,
+                qualification, yearsExperience, bio, previousProjects, avatarUri, portfolioUris, certificateUris
             )
         },
         enabled = !isLoading,
@@ -572,13 +621,17 @@ private fun EngineerRegisterForm(
 @Composable
 private fun VendorRegisterForm(
     isLoading: Boolean,
-    onSubmit: (String, String, String, String, String, String, Uri?, Uri?) -> Unit
+    onSubmit: (String, String, String, String, String, String, String, String, String, String, Uri?, Uri?) -> Unit
 ) {
     var vendorName by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var phone by rememberSaveable { mutableStateOf("") }
+    var city by rememberSaveable { mutableStateOf("") }
+    var storeAddress by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var storeName by rememberSaveable { mutableStateOf("") }
+    var businessType by rememberSaveable { mutableStateOf("") }
+    var storeDescription by rememberSaveable { mutableStateOf("") }
     var commercialRegister by rememberSaveable { mutableStateOf("") }
     var storeLogoUri by remember { mutableStateOf<Uri?>(null) }
     var storeImageUri by remember { mutableStateOf<Uri?>(null) }
@@ -602,63 +655,96 @@ private fun VendorRegisterForm(
         modifier = Modifier.fillMaxWidth().testTag("vendor_reg_name_input")
     )
     OutlinedTextField(
-        value = storeName,
-        onValueChange = { storeName = it },
-        label = { Text("اسم المتجر") },
-        leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_store_input")
-    )
-    OutlinedTextField(
-        value = email,
-        onValueChange = { email = it },
-        label = { Text("البريد الإلكتروني") },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_email_input")
-    )
-    OutlinedTextField(
         value = phone,
         onValueChange = { phone = it },
-        label = { Text("الهاتف") },
+        label = { Text("رقم الهاتف") },
+        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
         singleLine = true,
         modifier = Modifier.fillMaxWidth().testTag("vendor_reg_phone_input")
     )
     OutlinedTextField(
+        value = email,
+        onValueChange = { email = it },
+        label = { Text("البريد الإلكتروني") },
+        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_email_input")
+    )
+    OutlinedTextField(
+        value = storeName,
+        onValueChange = { storeName = it },
+        label = { Text("اسم المحل أو المؤسسة") },
+        leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_store_input")
+    )
+    OutlinedTextField(
+        value = businessType,
+        onValueChange = { businessType = it },
+        label = { Text("نوع النشاط التجاري (مثلاً: ألواح وبطاريات / مستلزمات شمسية)") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_business_type_input")
+    )
+    OutlinedTextField(
+        value = city,
+        onValueChange = { city = it },
+        label = { Text("المدينة") },
+        leadingIcon = { Icon(Icons.Default.LocationCity, contentDescription = null) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_city_input")
+    )
+    OutlinedTextField(
+        value = storeAddress,
+        onValueChange = { storeAddress = it },
+        label = { Text("عنوان المحل") },
+        leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_address_input")
+    )
+    OutlinedTextField(
         value = commercialRegister,
         onValueChange = { commercialRegister = it },
-        label = { Text("السجل التجاري (اختياري أو حسب اشتراط النظام)") },
+        label = { Text("رقم السجل التجاري (إن وجد)") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth().testTag("vendor_reg_cr_input")
+    )
+    OutlinedTextField(
+        value = storeDescription,
+        onValueChange = { storeDescription = it },
+        label = { Text("وصف المحل") },
+        minLines = 3,
+        modifier = Modifier.fillMaxWidth().testTag("vendor_reg_description_input")
     )
     OutlinedTextField(
         value = password,
         onValueChange = { password = it },
         label = { Text("كلمة المرور") },
+        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
         visualTransformation = PasswordVisualTransformation(),
         singleLine = true,
         modifier = Modifier.fillMaxWidth().testTag("vendor_reg_password_input")
     )
 
     SingleImagePickerField(
-        label = "شعار المتجر",
-        selectedUri = storeLogoUri,
-        onImageSelected = { storeLogoUri = it },
-        testTag = "vendor_reg_logo_picker"
-    )
-    SingleImagePickerField(
-        label = "صورة المتجر",
+        label = "صورة المحل",
         selectedUri = storeImageUri,
         onImageSelected = { storeImageUri = it },
         testTag = "vendor_reg_image_picker"
+    )
+    SingleImagePickerField(
+        label = "شعار المحل (إن وجد)",
+        selectedUri = storeLogoUri,
+        onImageSelected = { storeLogoUri = it },
+        testTag = "vendor_reg_logo_picker"
     )
 
     Button(
         onClick = {
             onSubmit(
-                vendorName, email, phone, password, storeName,
-                commercialRegister, storeLogoUri, storeImageUri
+                vendorName, email, phone, city, storeAddress, password, storeName,
+                businessType, storeDescription, commercialRegister, storeLogoUri, storeImageUri
             )
         },
         enabled = !isLoading,

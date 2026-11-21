@@ -115,7 +115,7 @@ fun ServerSettingsScreen(
                             )
                         }
                         Text(
-                            text = "يتصل التطبيق بخادم PHP عبر HTTPS للوصول إلى قاعدة البيانات solar_platform دون تخزين أي بيانات اتصال MySQL داخل الهاتف.",
+                            text = "يتصل التطبيق بخادم PHP عبر الرابط المحفوظ في الإعدادات (الافتراضي للتطوير المحلي: http://10.46.17.35/solar-admin/api/) للوصول إلى قاعدة البيانات solar_platform.",
                             style = MaterialTheme.typography.bodySmall,
                             color = SolarTextSecondary
                         )
@@ -127,7 +127,7 @@ fun ServerSettingsScreen(
                                 savedMessage = null
                             },
                             label = { Text("رابط مجلد API (ينتهي بـ /solar-admin/api/)") },
-                            placeholder = { Text("https://your-domain.com/solar-admin/api/") },
+                            placeholder = { Text("http://10.46.17.35/solar-admin/api/") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                             modifier = Modifier
@@ -136,7 +136,7 @@ fun ServerSettingsScreen(
                         )
 
                         val trimmedUrl = baseUrl.trim()
-                        if (trimmedUrl.startsWith("http://")) {
+                        if (trimmedUrl.startsWith("http://", ignoreCase = true)) {
                             Surface(
                                 color = SolarAmberSoft,
                                 shape = RoundedCornerShape(10.dp)
@@ -148,13 +148,13 @@ fun ServerSettingsScreen(
                                     Icon(Icons.Default.WarningAmber, contentDescription = null, tint = SolarAmberAccent)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = "تنبيه أمني: يُوصى باستخدام HTTPS في الاستضافة الفعلية. اتصال HTTP مسموح فقط للتجربة المحلية (localhost / 10.0.2.2).",
+                                        text = "وضع التطوير المحلي HTTP: الاتصال مسموح للشبكة المحلية (مثل 10.46.17.35 و 10.0.2.2). يُوصى باستخدام HTTPS عند النشر الفعلي.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = SolarTextPrimary
                                     )
                                 }
                             }
-                        } else if (trimmedUrl.startsWith("https://")) {
+                        } else if (trimmedUrl.startsWith("https://", ignoreCase = true)) {
                             Surface(
                                 color = SolarGreenLight,
                                 shape = RoundedCornerShape(10.dp)

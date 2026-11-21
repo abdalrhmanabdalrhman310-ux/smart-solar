@@ -10,13 +10,14 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
 
 /**
- * Safely reads user-selected images via ContentResolver (Photo Picker URIs)
+ * Safely reads user-selected images or PDF attachments via ContentResolver
  * and enforces MIME type & maximum file size checks before multipart upload.
  */
 object MultipartUploadHelper {
 
-    private const val MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB limit
-    private val allowedMimeTypes = setOf("image/jpeg", "image/jpg", "image/png", "image/webp")
+    private const val MAX_FILE_BYTES = 5 * 1024 * 1024 // 5 MB limit
+    private val allowedImageMimeTypes = setOf("image/jpeg", "image/jpg", "image/png", "image/webp")
+    private val allowedAttachmentMimeTypes = allowedImageMimeTypes + setOf("application/pdf")
 
     sealed class PreparedPart {
         data class Valid(val part: MultipartBody.Part) : PreparedPart()
@@ -27,11 +28,38 @@ object MultipartUploadHelper {
         context: Context,
         uri: Uri,
         formFieldName: String
+    ): PreparedPart = preparePartInternal(
+        context = context,
+        uri = uri,
+        formFieldName = formFieldName,
+        allowedTypes = allowedImageMimeTypes,
+        unsupportedMessage = "نوع الملف غير مدعوم. يُسمح فقط بصور JPG و PNG و WEBP."
+    )
+
+    fun prepareAttachmentPart(
+        context: Context,
+        uri: Uri,
+        formFieldName: String
+    ): PreparedPart = preparePartInternal(
+        context = context,
+        uri = uri,
+        formFieldName = formFieldName,
+        allowedTypes = allowedAttachmentMimeTypes,
+        unsupportedMessage = "نوع المرفق غير مدعوم. يُسمح فقط بصور JPG/PNG/WEBP أو ملفات PDF."
+    )
+
+    private fun preparePartInternal(
+        context: Context,
+        uri: Uri,
+        formFieldName: String,
+        allowedTypes: Set<String>,
+        unsupportedMessage: String
     ): PreparedPart {
         val resolver = context.contentResolver
-        val mimeType = resolver.getType(uri)?.lowercase() ?: "image/jpeg"
-        if (mimeType !in allowedMimeTypes) {
-            return PreparedPart.Invalid("نوع الملف غير مدعوم. يُسمح فقط بصور JPG و PNG و WEBP.")
+        val detectedMime = resolver.getType(uri)?.lowercase()
+        val mimeType = detectedMime ?: guessMimeFromUri(uri)
+        if (mimeType !in allowedTypes) {
+            return PreparedPart.Invalid(unsupportedMessage)
         }
 
         val fileName = resolveSafeFileName(context, uri, mimeType)
@@ -45,22 +73,22 @@ object MultipartUploadHelper {
                     val read = input.read(chunk)
                     if (read == -1) break
                     total += read
-                    if (total > MAX_IMAGE_BYTES) {
-                        return PreparedPart.Invalid("حجم الصورة يتجاوز الحد المسموح (5 ميجابايت).")
+                    if (total > MAX_FILE_BYTES) {
+                        return PreparedPart.Invalid("حجم الملف يتجاوز الحد المسموح (5 ميجابايت).")
                     }
                     buffer.write(chunk, 0, read)
                 }
                 val bytes = buffer.toByteArray()
                 if (bytes.isEmpty()) {
-                    return PreparedPart.Invalid("تعذر قراءة بيانات الصورة المختارة.")
+                    return PreparedPart.Invalid("تعذر قراءة بيانات الملف المختار.")
                 }
                 val requestBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
                 PreparedPart.Valid(
                     MultipartBody.Part.createFormData(formFieldName, fileName, requestBody)
                 )
-            } ?: PreparedPart.Invalid("تعذر فتح الصورة المختارة من الجهاز.")
+            } ?: PreparedPart.Invalid("تعذر فتح الملف المختار من الجهاز.")
         } catch (e: Exception) {
-            PreparedPart.Invalid("حدث خطأ أثناء تجهيز الصورة للرفع: ${e.localizedMessage ?: "خطأ غير معروف"}")
+            PreparedPart.Invalid("حدث خطأ أثناء تجهيز الملف للرفع: ${e.localizedMessage ?: "خطأ غير معروف"}")
         }
     }
 
@@ -68,8 +96,19 @@ object MultipartUploadHelper {
         return value.toRequestBody("text/plain; charset=utf-8".toMediaTypeOrNull())
     }
 
+    private fun guessMimeFromUri(uri: Uri): String {
+        val path = uri.toString().lowercase()
+        return when {
+            path.endsWith(".pdf") -> "application/pdf"
+            path.endsWith(".png") -> "image/png"
+            path.endsWith(".webp") -> "image/webp"
+            else -> "image/jpeg"
+        }
+    }
+
     private fun resolveSafeFileName(context: Context, uri: Uri, mimeType: String): String {
         val ext = when (mimeType) {
+            "application/pdf" -> "pdf"
             "image/png" -> "png"
             "image/webp" -> "webp"
             else -> "jpg"

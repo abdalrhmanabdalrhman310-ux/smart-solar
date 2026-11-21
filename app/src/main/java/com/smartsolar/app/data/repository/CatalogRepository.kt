@@ -272,7 +272,7 @@ class CatalogRepository(
         )
     }
 
-    private fun ProductDto.toDomain(): Product {
+    private suspend fun ProductDto.toDomain(): Product {
         val cat = ProductCategory.fromApi(category)
         return Product(
             id = id,
@@ -285,13 +285,13 @@ class CatalogRepository(
             rawCategory = category ?: cat.arabicLabel,
             price = price ?: 0.0,
             stock = stock ?: quantity ?: 0,
-            imageUrl = imageUrl ?: image.orEmpty(),
+            imageUrl = networkFactory.resolveAssetUrl(imageUrl ?: image),
             isFeatured = isFeatured ?: false,
             createdAt = createdAt.orEmpty()
         )
     }
 
-    private fun OrderDto.toDomain(): Order {
+    private suspend fun OrderDto.toDomain(): Order {
         return Order(
             id = id,
             orderNumber = orderNumber?.takeIf { it.isNotBlank() } ?: "#$id",
@@ -312,7 +312,7 @@ class CatalogRepository(
                     quantity = item.quantity,
                     unitPrice = price,
                     subtotal = price * item.quantity,
-                    imageUrl = item.imageUrl.orEmpty()
+                    imageUrl = networkFactory.resolveAssetUrl(item.imageUrl)
                 )
             }
         )

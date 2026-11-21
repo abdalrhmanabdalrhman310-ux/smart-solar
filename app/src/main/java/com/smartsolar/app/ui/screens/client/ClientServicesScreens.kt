@@ -379,11 +379,21 @@ fun EngineersScreen(
                 }
 
                 RatingStarsDisplay(rating = eng.averageRating, count = eng.ratingsCount)
+                if (eng.city.isNotBlank()) {
+                    Text("المدينة: ${eng.city}", style = MaterialTheme.typography.bodyMedium)
+                }
+                if (eng.age > 0) {
+                    Text("العمر: ${eng.age} سنة", style = MaterialTheme.typography.bodyMedium)
+                }
                 Text("المؤهل العلمي: ${eng.qualification.ifBlank { "-" }}", style = MaterialTheme.typography.bodyMedium)
                 Text("سنوات الخبرة: ${eng.yearsOfExperience} سنة", style = MaterialTheme.typography.bodyMedium)
                 if (eng.bio.isNotBlank()) {
                     Text("النبذة التعريفية:", style = MaterialTheme.typography.titleSmall)
                     Text(eng.bio, style = MaterialTheme.typography.bodyMedium, color = SolarTextSecondary)
+                }
+                if (eng.previousProjects.isNotBlank()) {
+                    Text("الأعمال والمشاريع السابقة:", style = MaterialTheme.typography.titleSmall)
+                    Text(eng.previousProjects, style = MaterialTheme.typography.bodyMedium, color = SolarTextSecondary)
                 }
 
                 if (eng.portfolioImages.isNotEmpty()) {

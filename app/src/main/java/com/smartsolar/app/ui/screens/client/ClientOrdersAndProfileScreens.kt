@@ -485,7 +485,12 @@ fun ProfileScreen(
     var isEditing by rememberSaveable { mutableStateOf(false) }
     var fullName by rememberSaveable(session.fullName) { mutableStateOf(session.fullName) }
     var phone by rememberSaveable(session.phone) { mutableStateOf(session.phone) }
+    var city by rememberSaveable(session.city) { mutableStateOf(session.city) }
     var address by rememberSaveable(session.address) { mutableStateOf(session.address) }
+
+    LaunchedEffect(session.userId) {
+        appSessionViewModel.refreshProfileSilently()
+    }
 
     LaunchedEffect(actionState) {
         if (actionState is NetworkResult.Success) {
@@ -565,6 +570,12 @@ fun ProfileScreen(
                             Text("البيانات الشخصية", style = MaterialTheme.typography.titleMedium)
                             TextButton(
                                 onClick = {
+                                    if (isEditing) {
+                                        fullName = session.fullName
+                                        phone = session.phone
+                                        city = session.city
+                                        address = session.address
+                                    }
                                     isEditing = !isEditing
                                     appSessionViewModel.clearProfileActionState()
                                 },
@@ -596,6 +607,12 @@ fun ProfileScreen(
                                 modifier = Modifier.fillMaxWidth().testTag("profile_phone_input")
                             )
                             OutlinedTextField(
+                                value = city,
+                                onValueChange = { city = it },
+                                label = { Text("المدينة") },
+                                modifier = Modifier.fillMaxWidth().testTag("profile_city_input")
+                            )
+                            OutlinedTextField(
                                 value = address,
                                 onValueChange = { address = it },
                                 label = { Text("العنوان") },
@@ -603,7 +620,7 @@ fun ProfileScreen(
                             )
                             val saving = actionState is NetworkResult.Loading
                             Button(
-                                onClick = { appSessionViewModel.updateProfile(fullName, phone, address) },
+                                onClick = { appSessionViewModel.updateProfile(fullName, phone, city, address) },
                                 enabled = !saving,
                                 modifier = Modifier.fillMaxWidth().height(48.dp).testTag("profile_save_button"),
                                 colors = ButtonDefaults.buttonColors(containerColor = SolarGreenPrimary)
@@ -617,9 +634,13 @@ fun ProfileScreen(
                         } else {
                             ProfileInfoRow("البريد الإلكتروني", session.email.ifBlank { "-" })
                             ProfileInfoRow("رقم الهاتف", session.phone.ifBlank { "-" })
+                            ProfileInfoRow("المدينة", session.city.ifBlank { "-" })
                             ProfileInfoRow("العنوان", session.address.ifBlank { "-" })
                             if (session.storeName.isNotBlank()) {
                                 ProfileInfoRow("اسم المتجر", session.storeName)
+                            }
+                            if (session.businessType.isNotBlank()) {
+                                ProfileInfoRow("نوع النشاط التجاري", session.businessType)
                             }
                             if (session.specialization.isNotBlank()) {
                                 ProfileInfoRow("التخصص", session.specialization)

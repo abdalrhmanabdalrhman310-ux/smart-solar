@@ -258,7 +258,7 @@ fun SmartSolarRoot(container: AppContainer) {
                     PendingApprovalScreen(
                         session = rootState.session,
                         onRefreshStatus = {
-                            // Re-check approval status from auth.php
+                            appSessionViewModel.logout()
                             navController.navigate(Routes.AUTH) {
                                 popUpTo(Routes.PENDING_APPROVAL) { inclusive = true }
                             }

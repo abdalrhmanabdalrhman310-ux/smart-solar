@@ -1,10 +1,11 @@
 # Smart Solar ProGuard / R8 keep rules
 -keepattributes SourceFile,LineNumberTable
--keepattributes Signature,InnerClasses,EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod
 
 # Moshi & Retrofit DTOs
 -keep class com.smartsolar.app.data.remote.** { *; }
 -keep class com.smartsolar.app.data.local.StoredCartItemDto { *; }
+-keep class com.smartsolar.app.data.local.StoredCookieDto { *; }
 -keep class com.smartsolar.app.domain.model.** { *; }
 -keepclassmembers class * {
     @com.squareup.moshi.Json <fields>;

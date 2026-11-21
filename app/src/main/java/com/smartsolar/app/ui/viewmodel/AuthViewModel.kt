@@ -58,6 +58,7 @@ class AuthViewModel(
         fullName: String,
         email: String,
         phone: String,
+        city: String,
         password: String,
         confirmPassword: String,
         address: String
@@ -65,6 +66,7 @@ class AuthViewModel(
         val error = validateCommonFields(fullName, email, phone, password)
             ?: when {
                 password != confirmPassword -> "كلمة المرور وتأكيد كلمة المرور غير متطابقتين."
+                city.trim().length < 2 -> "يرجى إدخال المدينة."
                 address.trim().length < 4 -> "يرجى إدخال العنوان بشكل واضح."
                 else -> null
             }
@@ -74,30 +76,38 @@ class AuthViewModel(
         }
         viewModelScope.launch {
             _authResult.value = NetworkResult.Loading
-            _authResult.value = authRepository.registerClient(fullName, email, phone, password, address)
+            _authResult.value = authRepository.registerClient(fullName, email, phone, city, password, address)
         }
     }
 
     fun registerEngineer(
         fullName: String,
+        ageText: String,
         email: String,
         phone: String,
+        city: String,
         password: String,
         specialization: String,
         qualification: String,
         yearsExperienceText: String,
         bio: String,
+        previousProjects: String,
         avatarUri: Uri?,
         portfolioUris: List<Uri>,
         certificateUris: List<Uri>
     ) {
+        val age = ageText.trim().toIntOrNull()
         val years = yearsExperienceText.trim().toIntOrNull()
         val error = validateCommonFields(fullName, email, phone, password)
             ?: when {
-                specialization.isBlank() -> "يرجى إدخال التخصص الهندسي."
+                age == null || age !in 18..90 -> "يرجى إدخال عمر صحيح (من 18 إلى 90 سنة)."
+                city.trim().length < 2 -> "يرجى إدخال المدينة."
                 qualification.isBlank() -> "يرجى إدخال المؤهل العلمي."
+                specialization.isBlank() -> "يرجى إدخال التخصص الهندسي."
                 years == null || years < 0 -> "يرجى إدخال سنوات خبرة صحيحة."
-                bio.trim().length < 10 -> "يرجى كتابة نبذة تعريفية لا تقل عن 10 أحرف."
+                bio.trim().length < 10 -> "يرجى كتابة نبذة تعريفية عن الخبرات (10 أحرف على الأقل)."
+                previousProjects.isBlank() && portfolioUris.isEmpty() ->
+                    "يرجى إدخال وصف الأعمال والمشاريع السابقة أو إرفاق صورها."
                 else -> null
             }
         if (error != null) {
@@ -108,13 +118,16 @@ class AuthViewModel(
             _authResult.value = NetworkResult.Loading
             _authResult.value = authRepository.registerEngineer(
                 fullName = fullName,
+                age = age ?: 0,
                 email = email,
                 phone = phone,
+                city = city,
                 password = password,
                 specialization = specialization,
                 qualification = qualification,
                 yearsExperience = years ?: 0,
                 bio = bio,
+                previousProjects = previousProjects,
                 avatarUri = avatarUri,
                 portfolioUris = portfolioUris,
                 certificateUris = certificateUris
@@ -126,15 +139,23 @@ class AuthViewModel(
         vendorName: String,
         email: String,
         phone: String,
+        city: String,
+        storeAddress: String,
         password: String,
         storeName: String,
+        businessType: String,
+        storeDescription: String,
         commercialRegister: String,
         storeLogoUri: Uri?,
         storeImageUri: Uri?
     ) {
         val error = validateCommonFields(vendorName, email, phone, password)
             ?: when {
-                storeName.trim().length < 2 -> "يرجى إدخال اسم المتجر."
+                storeName.trim().length < 2 -> "يرجى إدخال اسم المحل أو المؤسسة."
+                businessType.trim().length < 2 -> "يرجى إدخال نوع النشاط التجاري."
+                city.trim().length < 2 -> "يرجى إدخال المدينة."
+                storeAddress.trim().length < 4 -> "يرجى إدخال عنوان المحل بشكل واضح."
+                storeDescription.trim().length < 6 -> "يرجى إدخال وصف المحل والمنتجات التي يقدمها."
                 else -> null
             }
         if (error != null) {
@@ -147,8 +168,12 @@ class AuthViewModel(
                 vendorName = vendorName,
                 email = email,
                 phone = phone,
+                city = city,
+                storeAddress = storeAddress,
                 password = password,
                 storeName = storeName,
+                businessType = businessType,
+                storeDescription = storeDescription,
                 commercialRegister = commercialRegister,
                 storeLogoUri = storeLogoUri,
                 storeImageUri = storeImageUri

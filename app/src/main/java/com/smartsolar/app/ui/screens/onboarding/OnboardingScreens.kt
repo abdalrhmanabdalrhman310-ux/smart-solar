@@ -514,17 +514,29 @@ fun PendingApprovalScreen(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = if (isRejected) "تم رفض طلب الانضمام" else "حسابك بانتظار موافقة الإدارة",
+                    text = if (isRejected) "تم رفض طلب الانضمام" else "حالة الطلب: قيد المراجعة",
                     style = MaterialTheme.typography.headlineMedium,
                     color = SolarTextPrimary,
                     textAlign = TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    color = SolarAmberSoft,
+                    shape = RoundedCornerShape(50)
+                ) {
+                    Text(
+                        text = if (isRejected) "حساب مرفوض" else "بانتظار موافقة مدير النظام",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = SolarTextPrimary,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = if (isRejected) {
                         "نأسف، لم تتم الموافقة على تفعيل حساب (${session.role.arabicLabel}) من قبل إدارة المنصة."
                     } else {
-                        "مرحباً ${session.fullName.ifBlank { session.email }}! تم استلام طلب تسجيلك بصفتك (${session.role.arabicLabel}). لا يمكن الوصول إلى لوحة التحكم قبل اعتماد الحساب من قبل المدير في نظام PHP."
+                        "مرحباً ${session.fullName.ifBlank { session.email }}! تم إرسال وحفظ طلب تسجيلك بصفتك (${session.role.arabicLabel}) وهو قيد المراجعة حالياً. لا يمكن الدخول إلى لوحة التحكم قبل موافقة مدير النظام."
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     color = SolarTextSecondary,

@@ -26,17 +26,25 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.3.1'
 
-      - name: Prepare Gradle
-        run: chmod +x ./gradlew
+      - name: Prepare Debug Keystore
+        run: |
+          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
 
       - name: Build Android APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Prepare SmartSolar.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk SmartSolar.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SmartSolar-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: SmartSolar.apk
           if-no-files-found: error
           retention-days: 30

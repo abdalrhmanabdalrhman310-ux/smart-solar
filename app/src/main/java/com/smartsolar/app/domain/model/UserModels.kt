@@ -37,6 +37,7 @@ data class UserSession(
     val fullName: String = "",
     val email: String = "",
     val phone: String = "",
+    val city: String = "",
     val address: String = "",
     val avatarUrl: String = "",
     val role: UserRole = UserRole.CLIENT,
@@ -44,13 +45,17 @@ data class UserSession(
     val token: String = "",
     val rememberSession: Boolean = false,
     // Engineer-specific optional metadata
+    val age: Int = 0,
     val specialization: String = "",
     val qualification: String = "",
     val yearsOfExperience: Int = 0,
     val bio: String = "",
+    val previousProjects: String = "",
     val availability: EngineerAvailability = EngineerAvailability.AVAILABLE,
     // Vendor-specific optional metadata
     val storeName: String = "",
+    val businessType: String = "",
+    val storeDescription: String = "",
     val storeLogoUrl: String = "",
     val storeImageUrl: String = "",
     val commercialRegister: String = ""
@@ -67,8 +72,11 @@ data class ServerConfig(
     val timeoutSeconds: Int = 30
 ) {
     val isConfigured: Boolean
-        get() = baseUrl.isNotBlank() && (baseUrl.startsWith("https://") || baseUrl.startsWith("http://"))
+        get() = baseUrl.isNotBlank() && (
+            baseUrl.startsWith("https://", ignoreCase = true) ||
+                baseUrl.startsWith("http://", ignoreCase = true)
+            )
 
     val isHttps: Boolean
-        get() = baseUrl.startsWith("https://")
+        get() = baseUrl.startsWith("https://", ignoreCase = true)
 }

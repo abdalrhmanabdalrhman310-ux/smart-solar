@@ -51,17 +51,27 @@ class SolarScreensRobolectricTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("login_email_input").assertIsDisplayed()
 
-        composeTestRule.onNodeWithTag("auth_tab_client_register").performClick()
+        composeTestRule.onNodeWithTag("auth_tab_client_register").performScrollTo().performClick()
         composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("client_reg_city_input").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("client_reg_address_input").performScrollTo().assertIsDisplayed()
 
-        composeTestRule.onNodeWithTag("auth_tab_engineer_register").performClick()
+        composeTestRule.onNodeWithTag("auth_server_status_banner").performScrollTo()
+        composeTestRule.onNodeWithTag("auth_tab_engineer_register").performScrollTo().performClick()
         composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("eng_reg_age_input").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("eng_reg_city_input").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("eng_reg_spec_input").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("eng_reg_projects_input").performScrollTo().assertIsDisplayed()
 
-        composeTestRule.onNodeWithTag("auth_tab_vendor_register").performClick()
+        composeTestRule.onNodeWithTag("auth_server_status_banner").performScrollTo()
+        composeTestRule.onNodeWithTag("auth_tab_vendor_register").performScrollTo().performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("vendor_reg_store_input").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("vendor_reg_business_type_input").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("vendor_reg_city_input").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("vendor_reg_address_input").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("vendor_reg_description_input").performScrollTo().assertIsDisplayed()
     }
 
     @Test

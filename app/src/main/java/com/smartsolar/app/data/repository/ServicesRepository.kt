@@ -505,20 +505,23 @@ class ServicesRepository(
         }
     }
 
-    private fun EngineerDto.toDomain(): EngineerProfile {
+    private suspend fun EngineerDto.toDomain(): EngineerProfile {
         return EngineerProfile(
             id = id,
             userId = userId ?: id,
             fullName = fullName ?: name ?: "مهندس طاقة شمسية",
             email = email.orEmpty(),
             phone = phone.orEmpty(),
+            city = city.orEmpty(),
+            age = age ?: 0,
             specialization = specialization ?: "أنظمة الطاقة الشمسية",
             qualification = qualification.orEmpty(),
             yearsOfExperience = yearsExperience ?: 0,
             bio = bio.orEmpty(),
-            avatarUrl = avatarUrl ?: avatar.orEmpty(),
-            portfolioImages = portfolioImages.orEmpty(),
-            certificateImages = certificateImages.orEmpty(),
+            previousProjects = previousProjects.orEmpty(),
+            avatarUrl = networkFactory.resolveAssetUrl(avatarUrl ?: avatar),
+            portfolioImages = portfolioImages.orEmpty().map { networkFactory.resolveAssetUrl(it) }.filter { it.isNotBlank() },
+            certificateImages = certificateImages.orEmpty().map { networkFactory.resolveAssetUrl(it) }.filter { it.isNotBlank() },
             averageRating = averageRating ?: rating ?: 0.0,
             ratingsCount = ratingsCount ?: 0,
             availability = EngineerAvailability.fromApi(availability)

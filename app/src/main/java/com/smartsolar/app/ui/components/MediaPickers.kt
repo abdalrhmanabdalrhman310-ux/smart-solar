@@ -231,3 +231,91 @@ fun MultiImagePickerField(
         }
     }
 }
+
+/**
+ * Zero-permission document & image picker for certificates and attachments (images or PDF).
+ */
+@Composable
+fun MultiAttachmentPickerField(
+    label: String,
+    selectedUris: List<Uri>,
+    onAttachmentsChanged: (List<Uri>) -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            onAttachmentsChanged((selectedUris + uris).distinct().take(5))
+        }
+    }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = SolarSurfaceSubtle,
+        border = BorderStroke(1.dp, SolarBorderLight)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = SolarTextPrimary
+                    )
+                    Text(
+                        text = "${selectedUris.size} / 5 مرفقات مختارة (صور أو PDF)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SolarTextSecondary
+                    )
+                }
+                OutlinedButton(
+                    onClick = {
+                        launcher.launch(arrayOf("image/*", "application/pdf"))
+                    },
+                    modifier = Modifier.testTag(testTag)
+                ) {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("إضافة مرفق")
+                }
+            }
+
+            if (selectedUris.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    selectedUris.forEachIndexed { index, uri ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "مرفق #${index + 1}: ${uri.lastPathSegment ?: "ملف"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SolarTextPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { onAttachmentsChanged(selectedUris - uri) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "حذف المرفق",
+                                    tint = SolarTextPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

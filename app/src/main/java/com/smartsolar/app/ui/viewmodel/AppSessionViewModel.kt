@@ -104,7 +104,11 @@ class AppSessionViewModel(
     fun testServerConnection(baseUrl: String, timeoutSeconds: Int) {
         viewModelScope.launch {
             val trimmed = baseUrl.trim()
-            if (trimmed.isBlank() || (!trimmed.startsWith("https://") && !trimmed.startsWith("http://"))) {
+            if (trimmed.isBlank() || (
+                !trimmed.startsWith("https://", ignoreCase = true) &&
+                    !trimmed.startsWith("http://", ignoreCase = true)
+                )
+            ) {
                 _connectionTestState.value = ConnectionTestState.Failure(
                     "يرجى إدخال رابط خادم صحيح يبدأ بـ https:// أو http://"
                 )
@@ -134,7 +138,15 @@ class AppSessionViewModel(
         _connectionTestState.value = ConnectionTestState.Idle
     }
 
-    fun updateProfile(fullName: String, phone: String, address: String) {
+    fun refreshProfileSilently() {
+        viewModelScope.launch {
+            if (rootState.value.session.isAuthenticated) {
+                authRepository.refreshProfile()
+            }
+        }
+    }
+
+    fun updateProfile(fullName: String, phone: String, city: String, address: String) {
         viewModelScope.launch {
             if (fullName.isBlank() || phone.isBlank()) {
                 _profileActionState.value = NetworkResult.Error(
@@ -144,7 +156,7 @@ class AppSessionViewModel(
                 return@launch
             }
             _profileActionState.value = NetworkResult.Loading
-            _profileActionState.value = authRepository.updateProfile(fullName, phone, address)
+            _profileActionState.value = authRepository.updateProfile(fullName, phone, city, address)
         }
     }
 

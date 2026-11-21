@@ -1,15 +1,14 @@
 package com.smartsolar.app.data.remote
 
 import com.squareup.moshi.Json
-import com.squareup.moshi.JsonClass
 
-@JsonClass(generateAdapter = true)
 data class ApiBaseResponse<T>(
     val success: Boolean? = null,
     val status: String? = null,
     val message: String? = null,
     val error: String? = null,
     val token: String? = null,
+    val user: AuthUserDto? = null,
     val data: T? = null,
     @Json(name = "session_expired") val sessionExpired: Boolean? = null
 ) {
@@ -27,7 +26,6 @@ data class ApiBaseResponse<T>(
     }
 }
 
-@JsonClass(generateAdapter = true)
 data class AuthUserDto(
     val id: Long? = null,
     @Json(name = "user_id") val userId: Long? = null,
@@ -35,59 +33,132 @@ data class AuthUserDto(
     val name: String? = null,
     val email: String? = null,
     val phone: String? = null,
+    val city: String? = null,
     val address: String? = null,
+    @Json(name = "store_address") val storeAddress: String? = null,
     val avatar: String? = null,
     @Json(name = "avatar_url") val avatarUrl: String? = null,
     val role: String? = null,
     @Json(name = "approval_status") val approvalStatus: String? = null,
+    val status: String? = null,
     @Json(name = "is_approved") val isApproved: Boolean? = null,
+    @Json(name = "requires_approval") val requiresApproval: Boolean? = null,
     val token: String? = null,
+    val age: Int? = null,
     val specialization: String? = null,
     val qualification: String? = null,
     @Json(name = "years_experience") val yearsExperience: Int? = null,
     val bio: String? = null,
+    @Json(name = "previous_projects") val previousProjects: String? = null,
     val availability: String? = null,
     @Json(name = "store_name") val storeName: String? = null,
+    @Json(name = "business_type") val businessType: String? = null,
+    @Json(name = "store_description") val storeDescription: String? = null,
     @Json(name = "store_logo") val storeLogo: String? = null,
     @Json(name = "store_image") val storeImage: String? = null,
     @Json(name = "commercial_register") val commercialRegister: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class AuthPayloadDto(
     val token: String? = null,
     val user: AuthUserDto? = null,
     @Json(name = "approval_status") val approvalStatus: String? = null,
-    val requiresApproval: Boolean? = null
-)
+    val status: String? = null,
+    val requiresApproval: Boolean? = null,
+    @Json(name = "requires_approval") val requiresApprovalSnake: Boolean? = null,
+    // Flat fallback fields if auth.php returns user columns directly inside data
+    val id: Long? = null,
+    @Json(name = "user_id") val userId: Long? = null,
+    @Json(name = "full_name") val fullName: String? = null,
+    val name: String? = null,
+    val email: String? = null,
+    val phone: String? = null,
+    val city: String? = null,
+    val address: String? = null,
+    @Json(name = "store_address") val storeAddress: String? = null,
+    val avatar: String? = null,
+    @Json(name = "avatar_url") val avatarUrl: String? = null,
+    val role: String? = null,
+    @Json(name = "is_approved") val isApproved: Boolean? = null,
+    val age: Int? = null,
+    val specialization: String? = null,
+    val qualification: String? = null,
+    @Json(name = "years_experience") val yearsExperience: Int? = null,
+    val bio: String? = null,
+    @Json(name = "previous_projects") val previousProjects: String? = null,
+    val availability: String? = null,
+    @Json(name = "store_name") val storeName: String? = null,
+    @Json(name = "business_type") val businessType: String? = null,
+    @Json(name = "store_description") val storeDescription: String? = null,
+    @Json(name = "store_logo") val storeLogo: String? = null,
+    @Json(name = "store_image") val storeImage: String? = null,
+    @Json(name = "commercial_register") val commercialRegister: String? = null
+) {
+    fun resolvedUser(): AuthUserDto? {
+        if (user != null) return user
+        if (id != null || userId != null || !email.isNullOrBlank() || !fullName.isNullOrBlank() || !role.isNullOrBlank()) {
+            return AuthUserDto(
+                id = id,
+                userId = userId,
+                fullName = fullName,
+                name = name,
+                email = email,
+                phone = phone,
+                city = city,
+                address = address,
+                storeAddress = storeAddress,
+                avatar = avatar,
+                avatarUrl = avatarUrl,
+                role = role,
+                approvalStatus = approvalStatus ?: status,
+                status = status,
+                isApproved = isApproved,
+                requiresApproval = requiresApproval ?: requiresApprovalSnake,
+                token = token,
+                age = age,
+                specialization = specialization,
+                qualification = qualification,
+                yearsExperience = yearsExperience,
+                bio = bio,
+                previousProjects = previousProjects,
+                availability = availability,
+                storeName = storeName,
+                businessType = businessType,
+                storeDescription = storeDescription,
+                storeLogo = storeLogo,
+                storeImage = storeImage,
+                commercialRegister = commercialRegister
+            )
+        }
+        return null
+    }
+}
 
-@JsonClass(generateAdapter = true)
 data class LoginRequestDto(
     val action: String = "login",
     val email: String,
     val password: String
 )
 
-@JsonClass(generateAdapter = true)
 data class RegisterClientRequestDto(
     val action: String = "register",
     val role: String = "client",
     @Json(name = "full_name") val fullName: String,
     val email: String,
     val phone: String,
+    val city: String,
     val password: String,
     val address: String
 )
 
-@JsonClass(generateAdapter = true)
 data class UpdateProfileRequestDto(
     val action: String = "update_profile",
     @Json(name = "full_name") val fullName: String,
     val phone: String,
+    val city: String,
     val address: String
 )
 
-@JsonClass(generateAdapter = true)
 data class ProductDto(
     val id: Long = 0L,
     @Json(name = "vendor_id") val vendorId: Long? = null,
@@ -106,13 +177,11 @@ data class ProductDto(
     @Json(name = "created_at") val createdAt: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class ProductsPayloadDto(
     val products: List<ProductDto>? = null,
     val items: List<ProductDto>? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class OrderItemDto(
     val id: Long? = null,
     @Json(name = "product_id") val productId: Long = 0L,
@@ -123,7 +192,6 @@ data class OrderItemDto(
     @Json(name = "image_url") val imageUrl: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class OrderDto(
     val id: Long = 0L,
     @Json(name = "order_number") val orderNumber: String? = null,
@@ -140,14 +208,12 @@ data class OrderDto(
     val items: List<OrderItemDto>? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class OrdersPayloadDto(
     val orders: List<OrderDto>? = null,
     val items: List<OrderDto>? = null,
     @Json(name = "total_sales") val totalSales: Double? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class CreateOrderRequestDto(
     val action: String = "create",
     @Json(name = "shipping_address") val shippingAddress: String,
@@ -156,13 +222,11 @@ data class CreateOrderRequestDto(
     val items: List<CreateOrderItemRequestDto>
 )
 
-@JsonClass(generateAdapter = true)
 data class CreateOrderItemRequestDto(
     @Json(name = "product_id") val productId: Long,
     val quantity: Int
 )
 
-@JsonClass(generateAdapter = true)
 data class EngineerDto(
     val id: Long = 0L,
     @Json(name = "user_id") val userId: Long? = null,
@@ -170,10 +234,13 @@ data class EngineerDto(
     val name: String? = null,
     val email: String? = null,
     val phone: String? = null,
+    val city: String? = null,
+    val age: Int? = null,
     val specialization: String? = null,
     val qualification: String? = null,
     @Json(name = "years_experience") val yearsExperience: Int? = null,
     val bio: String? = null,
+    @Json(name = "previous_projects") val previousProjects: String? = null,
     @Json(name = "avatar_url") val avatarUrl: String? = null,
     val avatar: String? = null,
     @Json(name = "portfolio_images") val portfolioImages: List<String>? = null,
@@ -184,19 +251,16 @@ data class EngineerDto(
     val availability: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class EngineersPayloadDto(
     val engineers: List<EngineerDto>? = null,
     val items: List<EngineerDto>? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class UpdateAvailabilityRequestDto(
     val action: String = "update_availability",
     val availability: String
 )
 
-@JsonClass(generateAdapter = true)
 data class ServiceTaskDto(
     val id: Long = 0L,
     @Json(name = "request_number") val requestNumber: String? = null,
@@ -218,7 +282,6 @@ data class ServiceTaskDto(
     @Json(name = "can_accept") val canAccept: Boolean? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class ServiceTasksPayloadDto(
     val installations: List<ServiceTaskDto>? = null,
     val maintenance: List<ServiceTaskDto>? = null,
@@ -226,7 +289,6 @@ data class ServiceTasksPayloadDto(
     val items: List<ServiceTaskDto>? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class CreateInstallationRequestDto(
     val action: String = "create",
     val location: String,
@@ -236,7 +298,6 @@ data class CreateInstallationRequestDto(
     @Json(name = "engineer_id") val engineerId: Long? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class CreateMaintenanceRequestDto(
     val action: String = "create",
     @Json(name = "system_details") val systemDetails: String,
@@ -247,7 +308,6 @@ data class CreateMaintenanceRequestDto(
     @Json(name = "engineer_id") val engineerId: Long? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class UpdateTaskStatusRequestDto(
     val action: String = "update_status",
     val id: Long,
@@ -255,7 +315,6 @@ data class UpdateTaskStatusRequestDto(
     @Json(name = "technical_report") val technicalReport: String = ""
 )
 
-@JsonClass(generateAdapter = true)
 data class SaveSolarDesignRequestDto(
     val action: String = "save",
     val title: String,
@@ -270,7 +329,6 @@ data class SaveSolarDesignRequestDto(
     @Json(name = "assumptions_note") val assumptionsNote: String
 )
 
-@JsonClass(generateAdapter = true)
 data class SolarDesignDto(
     val id: Long = 0L,
     val title: String? = null,
@@ -286,13 +344,11 @@ data class SolarDesignDto(
     @Json(name = "created_at") val createdAt: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class SolarDesignsPayloadDto(
     val designs: List<SolarDesignDto>? = null,
     val items: List<SolarDesignDto>? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class EngineerRatingDto(
     val id: Long = 0L,
     @Json(name = "engineer_id") val engineerId: Long = 0L,
@@ -305,7 +361,6 @@ data class EngineerRatingDto(
     @Json(name = "created_at") val createdAt: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class RatingsPayloadDto(
     val ratings: List<EngineerRatingDto>? = null,
     val items: List<EngineerRatingDto>? = null,
@@ -313,7 +368,6 @@ data class RatingsPayloadDto(
     val count: Int? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class SubmitRatingRequestDto(
     val action: String = "create",
     @Json(name = "engineer_id") val engineerId: Long,
@@ -323,7 +377,6 @@ data class SubmitRatingRequestDto(
     val comment: String
 )
 
-@JsonClass(generateAdapter = true)
 data class NotificationDto(
     val id: Long = 0L,
     val title: String? = null,
@@ -333,19 +386,16 @@ data class NotificationDto(
     @Json(name = "created_at") val createdAt: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class NotificationsPayloadDto(
     val notifications: List<NotificationDto>? = null,
     val items: List<NotificationDto>? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class MarkNotificationReadRequestDto(
     val action: String = "mark_read",
     val id: Long
 )
 
-@JsonClass(generateAdapter = true)
 data class PlatformSettingsDto(
     @Json(name = "site_name") val siteName: String? = null,
     @Json(name = "require_engineer_approval") val requireEngineerApproval: Boolean? = null,
@@ -354,7 +404,6 @@ data class PlatformSettingsDto(
     val currency: String? = null
 )
 
-@JsonClass(generateAdapter = true)
 data class GenericActionRequestDto(
     val action: String,
     val id: Long? = null
