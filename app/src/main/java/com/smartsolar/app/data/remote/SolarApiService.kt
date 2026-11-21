@@ -5,6 +5,8 @@ import okhttp3.RequestBody
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
@@ -28,22 +30,58 @@ interface SolarApiService {
 
     // 2. auth.php
     @POST(PhpEndpointContract.FILE_AUTH)
-    suspend fun login(@Body request: LoginRequestDto): ApiBaseResponse<AuthPayloadDto>
+    suspend fun login(
+        @Body request: LoginRequestDto,
+        @Query("action") actionQuery: String = "login"
+    ): ApiBaseResponse<AuthPayloadDto>
+
+    @FormUrlEncoded
+    @POST(PhpEndpointContract.FILE_AUTH)
+    suspend fun loginForm(
+        @Query("action") actionQuery: String = "login",
+        @Field("action") action: String = "login",
+        @Field("email") email: String,
+        @Field("password") password: String
+    ): ApiBaseResponse<AuthPayloadDto>
 
     @POST(PhpEndpointContract.FILE_AUTH)
-    suspend fun registerClient(@Body request: RegisterClientRequestDto): ApiBaseResponse<AuthPayloadDto>
+    suspend fun registerClient(
+        @Body request: RegisterClientRequestDto,
+        @Query("action") actionQuery: String = request.action
+    ): ApiBaseResponse<AuthPayloadDto>
+
+    @FormUrlEncoded
+    @POST(PhpEndpointContract.FILE_AUTH)
+    suspend fun registerClientForm(
+        @Query("action") actionQuery: String = "register",
+        @Field("action") action: String = "register",
+        @Field("role") role: String = "client",
+        @Field("full_name") fullName: String,
+        @Field("name") name: String = fullName,
+        @Field("email") email: String,
+        @Field("phone") phone: String,
+        @Field("city") city: String,
+        @Field("address") address: String,
+        @Field("password") password: String,
+        @Field("confirm_password") confirmPassword: String = password,
+        @Field("password_confirmation") passwordConfirmation: String = password
+    ): ApiBaseResponse<AuthPayloadDto>
 
     @Multipart
     @POST(PhpEndpointContract.FILE_AUTH)
     suspend fun registerEngineerMultipart(
+        @Query("action") actionQuery: String = "register",
         @Part("action") action: RequestBody,
         @Part("role") role: RequestBody,
         @Part("full_name") fullName: RequestBody,
+        @Part("name") name: RequestBody,
         @Part("age") age: RequestBody,
         @Part("email") email: RequestBody,
         @Part("phone") phone: RequestBody,
         @Part("city") city: RequestBody,
         @Part("password") password: RequestBody,
+        @Part("confirm_password") confirmPassword: RequestBody,
+        @Part("password_confirmation") passwordConfirmation: RequestBody,
         @Part("specialization") specialization: RequestBody,
         @Part("qualification") qualification: RequestBody,
         @Part("years_experience") yearsExperience: RequestBody,
@@ -57,15 +95,19 @@ interface SolarApiService {
     @Multipart
     @POST(PhpEndpointContract.FILE_AUTH)
     suspend fun registerVendorMultipart(
+        @Query("action") actionQuery: String = "register",
         @Part("action") action: RequestBody,
         @Part("role") role: RequestBody,
         @Part("full_name") fullName: RequestBody,
+        @Part("name") name: RequestBody,
         @Part("email") email: RequestBody,
         @Part("phone") phone: RequestBody,
         @Part("city") city: RequestBody,
         @Part("address") address: RequestBody,
         @Part("store_address") storeAddress: RequestBody,
         @Part("password") password: RequestBody,
+        @Part("confirm_password") confirmPassword: RequestBody,
+        @Part("password_confirmation") passwordConfirmation: RequestBody,
         @Part("store_name") storeName: RequestBody,
         @Part("business_type") businessType: RequestBody,
         @Part("store_description") storeDescription: RequestBody,
@@ -78,10 +120,27 @@ interface SolarApiService {
     suspend fun fetchProfile(@Query("action") action: String = "profile"): ApiBaseResponse<AuthPayloadDto>
 
     @POST(PhpEndpointContract.FILE_AUTH)
-    suspend fun updateProfile(@Body request: UpdateProfileRequestDto): ApiBaseResponse<AuthPayloadDto>
+    suspend fun updateProfile(
+        @Body request: UpdateProfileRequestDto,
+        @Query("action") actionQuery: String = "update_profile"
+    ): ApiBaseResponse<AuthPayloadDto>
+
+    @FormUrlEncoded
+    @POST(PhpEndpointContract.FILE_AUTH)
+    suspend fun updateProfileForm(
+        @Query("action") actionQuery: String = "update_profile",
+        @Field("action") action: String = "update_profile",
+        @Field("full_name") fullName: String,
+        @Field("phone") phone: String,
+        @Field("city") city: String,
+        @Field("address") address: String
+    ): ApiBaseResponse<AuthPayloadDto>
 
     @POST(PhpEndpointContract.FILE_AUTH)
-    suspend fun logout(@Body request: GenericActionRequestDto = GenericActionRequestDto("logout")): ApiBaseResponse<Unit>
+    suspend fun logout(
+        @Body request: GenericActionRequestDto = GenericActionRequestDto("logout"),
+        @Query("action") actionQuery: String = "logout"
+    ): ApiBaseResponse<Unit>
 
     // 3. products.php
     @GET(PhpEndpointContract.FILE_PRODUCTS)
@@ -94,6 +153,7 @@ interface SolarApiService {
     @Multipart
     @POST(PhpEndpointContract.FILE_PRODUCTS)
     suspend fun saveVendorProductMultipart(
+        @Query("action") actionQuery: String,
         @Part("action") action: RequestBody,
         @Part("id") id: RequestBody?,
         @Part("name") name: RequestBody,
@@ -106,7 +166,8 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_PRODUCTS)
     suspend fun deleteVendorProduct(
-        @Body request: GenericActionRequestDto
+        @Body request: GenericActionRequestDto,
+        @Query("action") actionQuery: String = "delete"
     ): ApiBaseResponse<Unit>
 
     // 4. orders.php
@@ -117,7 +178,8 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_ORDERS)
     suspend fun createOrder(
-        @Body request: CreateOrderRequestDto
+        @Body request: CreateOrderRequestDto,
+        @Query("action") actionQuery: String = "create"
     ): ApiBaseResponse<OrderDto>
 
     // 5. solar_designs.php
@@ -126,7 +188,8 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_SOLAR_DESIGNS)
     suspend fun saveSolarDesign(
-        @Body request: SaveSolarDesignRequestDto
+        @Body request: SaveSolarDesignRequestDto,
+        @Query("action") actionQuery: String = "save"
     ): ApiBaseResponse<SolarDesignDto>
 
     // 6. engineers.php
@@ -137,7 +200,8 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_ENGINEERS)
     suspend fun updateEngineerAvailability(
-        @Body request: UpdateAvailabilityRequestDto
+        @Body request: UpdateAvailabilityRequestDto,
+        @Query("action") actionQuery: String = "update_availability"
     ): ApiBaseResponse<EngineerDto>
 
     // 7. installations.php
@@ -148,12 +212,14 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_INSTALLATIONS)
     suspend fun createInstallation(
-        @Body request: CreateInstallationRequestDto
+        @Body request: CreateInstallationRequestDto,
+        @Query("action") actionQuery: String = "create"
     ): ApiBaseResponse<ServiceTaskDto>
 
     @POST(PhpEndpointContract.FILE_INSTALLATIONS)
     suspend fun updateInstallationTask(
-        @Body request: UpdateTaskStatusRequestDto
+        @Body request: UpdateTaskStatusRequestDto,
+        @Query("action") actionQuery: String = request.action
     ): ApiBaseResponse<ServiceTaskDto>
 
     // 8. maintenance.php
@@ -164,12 +230,14 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_MAINTENANCE)
     suspend fun createMaintenance(
-        @Body request: CreateMaintenanceRequestDto
+        @Body request: CreateMaintenanceRequestDto,
+        @Query("action") actionQuery: String = "create"
     ): ApiBaseResponse<ServiceTaskDto>
 
     @POST(PhpEndpointContract.FILE_MAINTENANCE)
     suspend fun updateMaintenanceTask(
-        @Body request: UpdateTaskStatusRequestDto
+        @Body request: UpdateTaskStatusRequestDto,
+        @Query("action") actionQuery: String = request.action
     ): ApiBaseResponse<ServiceTaskDto>
 
     // 9. ratings.php
@@ -180,7 +248,8 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_RATINGS)
     suspend fun submitRating(
-        @Body request: SubmitRatingRequestDto
+        @Body request: SubmitRatingRequestDto,
+        @Query("action") actionQuery: String = "create"
     ): ApiBaseResponse<EngineerRatingDto>
 
     // 10. notifications.php
@@ -189,6 +258,7 @@ interface SolarApiService {
 
     @POST(PhpEndpointContract.FILE_NOTIFICATIONS)
     suspend fun markNotificationRead(
-        @Body request: MarkNotificationReadRequestDto
+        @Body request: MarkNotificationReadRequestDto,
+        @Query("action") actionQuery: String = "mark_read"
     ): ApiBaseResponse<Unit>
 }

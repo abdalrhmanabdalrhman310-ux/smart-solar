@@ -144,10 +144,13 @@ data class RegisterClientRequestDto(
     val action: String = "register",
     val role: String = "client",
     @Json(name = "full_name") val fullName: String,
+    val name: String = fullName,
     val email: String,
     val phone: String,
     val city: String,
     val password: String,
+    @Json(name = "confirm_password") val confirmPassword: String = password,
+    @Json(name = "password_confirmation") val passwordConfirmation: String = password,
     val address: String
 )
 

@@ -65,6 +65,7 @@ class PhpIntegrationFlowTest {
 
     @Before
     fun setUp() {
+        strictFormOnlyMode = false
         app = ApplicationProvider.getApplicationContext()
         container = AppContainer(app)
         runBlocking {
@@ -249,6 +250,48 @@ class PhpIntegrationFlowTest {
         assertEquals("لوح شمسي 580 واط", list.first().name)
     }
 
+    @Test
+    fun `surfaces real PHP 400 error message and retries as form POST when PHP reads $_POST only`() = runBlocking {
+        container.sessionPreferences.saveServerConfig(baseUrl, 15)
+
+        // 1. Duplicate email HTTP 400 error body must surface PHP's exact Arabic message
+        val firstReg = container.authRepository.registerClient(
+            fullName = "أحمد صالح",
+            email = "dup@solar.test",
+            phone = "0500001111",
+            city = "الرياض",
+            password = "secret123",
+            address = "حي الملقا"
+        )
+        assertTrue(firstReg is NetworkResult.Success)
+
+        val dupReg = container.authRepository.registerClient(
+            fullName = "أحمد صالح",
+            email = "dup@solar.test",
+            phone = "0500001111",
+            city = "الرياض",
+            password = "secret123",
+            address = "حي الملقا"
+        )
+        assertTrue(dupReg is NetworkResult.Error)
+        val dupErr = dupReg as NetworkResult.Error
+        assertEquals(NetworkErrorType.VALIDATION_ERROR, dupErr.type)
+        assertTrue("Expected PHP 400 message in ${dupErr.arabicMessage}", dupErr.arabicMessage.contains("البريد الإلكتروني مسجل مسبقاً"))
+
+        // 2. Server rejecting application/json (requiring $_POST form-urlencoded) triggers automatic form fallback
+        strictFormOnlyMode = true
+        val formReg = container.authRepository.registerClient(
+            fullName = "سلمان الحربي",
+            email = "salman.form@solar.test",
+            phone = "0502223334",
+            city = "مكة",
+            password = "secret123",
+            address = "العزيزية"
+        )
+        assertTrue("Expected form-POST fallback success, got $formReg", formReg is NetworkResult.Success)
+        assertEquals("سلمان الحربي", (formReg as NetworkResult.Success).data.fullName)
+    }
+
     private fun handleApiRequest(exchange: HttpExchange) {
         val rawBody = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
         val path = exchange.requestURI.path
@@ -271,6 +314,8 @@ class PhpIntegrationFlowTest {
         exchange.responseBody.use { it.write(bytes) }
     }
 
+    private var strictFormOnlyMode = false
+
     private fun handleAuth(
         query: String,
         contentType: String,
@@ -278,8 +323,11 @@ class PhpIntegrationFlowTest {
         cookieId: String?
     ): Triple<Int, JSONObject, String?> {
         val action = Regex("(?:^|&)action=([^&]+)").find(query)?.groupValues?.get(1) ?: ""
+        if (action.isBlank()) {
+            return Triple(400, JSONObject().put("success", false).put("message", "Missing action query parameter"), null)
+        }
         return when {
-            query.contains("action=profile") -> {
+            action == "profile" -> {
                 val user = cookieId?.let { sessionsByCookie[it] }
                     ?: return Triple(401, JSONObject().put("success", false).put("session_expired", true), null)
                 Triple(200, JSONObject().put("success", true).put("data", JSONObject().put("user", user.toJson())), null)
@@ -334,7 +382,49 @@ class PhpIntegrationFlowTest {
                     null
                 )
             }
+            contentType.contains("application/x-www-form-urlencoded", ignoreCase = true) -> {
+                val fields = rawBody.split("&").mapNotNull { pair ->
+                    val idx = pair.indexOf("=")
+                    if (idx == -1) null
+                    else java.net.URLDecoder.decode(pair.substring(0, idx), "UTF-8") to
+                        java.net.URLDecoder.decode(pair.substring(idx + 1), "UTF-8")
+                }.toMap()
+                when (action) {
+                    "register" -> {
+                        val email = fields["email"].orEmpty()
+                        if (usersByEmail.containsKey(email)) {
+                            return Triple(400, JSONObject().put("success", false).put("message", "البريد الإلكتروني مسجل مسبقاً"), null)
+                        }
+                        val user = FakeUser(
+                            id = ++nextUserId,
+                            fullName = fields["full_name"].orEmpty(),
+                            email = email,
+                            phone = fields["phone"].orEmpty(),
+                            city = fields["city"].orEmpty(),
+                            address = fields["address"].orEmpty(),
+                            password = fields["password"].orEmpty(),
+                            role = fields["role"] ?: "client",
+                            approvalStatus = "approved"
+                        )
+                        usersByEmail[email] = user
+                        Triple(200, JSONObject().put("success", true).put("message", "تم إنشاء الحساب").put("data", JSONObject().put("user", user.toJson())), null)
+                    }
+                    "login" -> {
+                        val user = usersByEmail[fields["email"].orEmpty()]
+                        if (user == null || user.password != fields["password"]) {
+                            return Triple(400, JSONObject().put("success", false).put("message", "بيانات الدخول غير صحيحة"), null)
+                        }
+                        val sid = "sess_${user.id}"
+                        sessionsByCookie[sid] = user
+                        Triple(200, JSONObject().put("success", true).put("data", JSONObject().put("user", user.toJson())), sid)
+                    }
+                    else -> Triple(400, JSONObject().put("success", false).put("message", "Unsupported form action"), null)
+                }
+            }
             else -> {
+                if (strictFormOnlyMode) {
+                    return Triple(400, JSONObject().put("success", false).put("message", "Required POST fields are missing"), null)
+                }
                 val body = JSONObject(rawBody)
                 val effectiveAction = body.optString("action", action)
                 when (effectiveAction) {
@@ -353,6 +443,9 @@ class PhpIntegrationFlowTest {
                     }
                     "register" -> {
                         val email = body.optString("email")
+                        if (usersByEmail.containsKey(email)) {
+                            return Triple(400, JSONObject().put("success", false).put("message", "البريد الإلكتروني مسجل مسبقاً"), null)
+                        }
                         val user = FakeUser(
                             id = ++nextUserId,
                             fullName = body.optString("full_name"),

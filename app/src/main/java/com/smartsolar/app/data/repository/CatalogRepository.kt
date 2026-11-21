@@ -201,6 +201,7 @@ class CatalogRepository(
         val actionName = if (productId == null || productId <= 0L) "create" else "update"
         val result = networkFactory.safeApiCall(PhpEndpointContract.FILE_PRODUCTS) {
             api.saveVendorProductMultipart(
+                actionQuery = actionName,
                 action = MultipartUploadHelper.textPart(actionName),
                 id = productId?.takeIf { it > 0L }?.let { MultipartUploadHelper.textPart(it.toString()) },
                 name = MultipartUploadHelper.textPart(name.trim()),

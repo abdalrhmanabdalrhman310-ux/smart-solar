@@ -175,4 +175,16 @@ class PhpApiParsingTest {
         assertEquals(1, parsed.data?.items?.size)
         assertEquals("بطارية ليثيوم", parsed.data?.items?.firstOrNull()?.name)
     }
+
+    @Test
+    fun `extracts Arabic error message and errors map from HTTP 400 JSON`() {
+        val body = """{"success":false,"message":"البريد الإلكتروني مستخدم مسبقاً","errors":{"email":["البريد مسجل"]}}"""
+        val extracted = NetworkClientFactory.extractServerErrorDetails(body)
+        assertFalse(extracted.sessionExpired)
+        assertTrue(extracted.message.contains("البريد الإلكتروني مستخدم مسبقاً"))
+        assertTrue(extracted.message.contains("البريد مسجل"))
+
+        val htmlExtracted = NetworkClientFactory.extractServerErrorDetails("<html><body>Bad Request</body></html>")
+        assertEquals("", htmlExtracted.message)
+    }
 }

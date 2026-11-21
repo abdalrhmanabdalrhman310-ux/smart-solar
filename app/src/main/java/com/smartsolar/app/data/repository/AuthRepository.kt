@@ -33,8 +33,16 @@ class AuthRepository(
         password: String,
         rememberSession: Boolean
     ): NetworkResult<UserSession> {
-        val result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+        var result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
             api.login(LoginRequestDto(email = email.trim(), password = password))
+        }
+        if (result is NetworkResult.Error && shouldRetryAsFormPost(result)) {
+            val fallback = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+                api.loginForm(email = email.trim(), password = password)
+            }
+            if (fallback is NetworkResult.Success || (fallback is NetworkResult.Error && fallback.arabicMessage.isNotBlank())) {
+                result = fallback
+            }
         }
         return when (result) {
             is NetworkResult.Success -> mapAuthResponse(
@@ -55,17 +63,59 @@ class AuthRepository(
         password: String,
         address: String
     ): NetworkResult<UserSession> {
-        val result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+        val trimmedName = fullName.trim()
+        val trimmedEmail = email.trim()
+        val trimmedPhone = phone.trim()
+        val trimmedCity = city.trim()
+        val trimmedAddress = address.trim()
+
+        var result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
             api.registerClient(
                 RegisterClientRequestDto(
-                    fullName = fullName.trim(),
-                    email = email.trim(),
-                    phone = phone.trim(),
-                    city = city.trim(),
+                    fullName = trimmedName,
+                    email = trimmedEmail,
+                    phone = trimmedPhone,
+                    city = trimmedCity,
                     password = password,
-                    address = address.trim()
+                    address = trimmedAddress
                 )
             )
+        }
+        if (result is NetworkResult.Error && result.type == NetworkErrorType.VALIDATION_ERROR) {
+            if (shouldRetryWithActionAlias(result)) {
+                result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+                    api.registerClient(
+                        RegisterClientRequestDto(
+                            action = "register_client",
+                            fullName = trimmedName,
+                            email = trimmedEmail,
+                            phone = trimmedPhone,
+                            city = trimmedCity,
+                            password = password,
+                            address = trimmedAddress
+                        ),
+                        actionQuery = "register_client"
+                    )
+                }
+            }
+            if (result is NetworkResult.Error && shouldRetryAsFormPost(result)) {
+                val formAction = if (shouldRetryWithActionAlias(result)) "register_client" else "register"
+                val fallback = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+                    api.registerClientForm(
+                        actionQuery = formAction,
+                        action = formAction,
+                        fullName = trimmedName,
+                        email = trimmedEmail,
+                        phone = trimmedPhone,
+                        city = trimmedCity,
+                        address = trimmedAddress,
+                        password = password
+                    )
+                }
+                if (fallback is NetworkResult.Success) {
+                    result = fallback
+                }
+            }
         }
         return when (result) {
             is NetworkResult.Success -> {
@@ -78,7 +128,7 @@ class AuthRepository(
                 )
                 if (mapped is NetworkResult.Success && !mapped.data.isAuthenticated) {
                     // Registration saved in users table without returning a session token; log in right away.
-                    when (val loginRes = login(email.trim(), password, rememberSession = true)) {
+                    when (val loginRes = login(trimmedEmail, password, rememberSession = true)) {
                         is NetworkResult.Success -> loginRes
                         is NetworkResult.Error -> NetworkResult.Error(
                             type = loginRes.type,
@@ -151,16 +201,20 @@ class AuthRepository(
             }
         }
 
-        val result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+        suspend fun executeEngineerRequest(actionName: String) = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
             api.registerEngineerMultipart(
-                action = MultipartUploadHelper.textPart("register"),
+                actionQuery = actionName,
+                action = MultipartUploadHelper.textPart(actionName),
                 role = MultipartUploadHelper.textPart("engineer"),
                 fullName = MultipartUploadHelper.textPart(fullName.trim()),
+                name = MultipartUploadHelper.textPart(fullName.trim()),
                 age = MultipartUploadHelper.textPart(age.toString()),
                 email = MultipartUploadHelper.textPart(email.trim()),
                 phone = MultipartUploadHelper.textPart(phone.trim()),
                 city = MultipartUploadHelper.textPart(city.trim()),
                 password = MultipartUploadHelper.textPart(password),
+                confirmPassword = MultipartUploadHelper.textPart(password),
+                passwordConfirmation = MultipartUploadHelper.textPart(password),
                 specialization = MultipartUploadHelper.textPart(specialization.trim()),
                 qualification = MultipartUploadHelper.textPart(qualification.trim()),
                 yearsExperience = MultipartUploadHelper.textPart(yearsExperience.toString()),
@@ -171,6 +225,15 @@ class AuthRepository(
                 certificateImages = certificateParts
             )
         }
+
+        var result = executeEngineerRequest("register")
+        if (result is NetworkResult.Error && shouldRetryWithActionAlias(result)) {
+            val fallback = executeEngineerRequest("register_engineer")
+            if (fallback is NetworkResult.Success) {
+                result = fallback
+            }
+        }
+
         return when (result) {
             is NetworkResult.Success -> mapAuthResponse(
                 response = result.data,
@@ -238,17 +301,21 @@ class AuthRepository(
             }
         }
 
-        val result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+        suspend fun executeVendorRequest(actionName: String) = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
             api.registerVendorMultipart(
-                action = MultipartUploadHelper.textPart("register"),
+                actionQuery = actionName,
+                action = MultipartUploadHelper.textPart(actionName),
                 role = MultipartUploadHelper.textPart("vendor"),
                 fullName = MultipartUploadHelper.textPart(vendorName.trim()),
+                name = MultipartUploadHelper.textPart(vendorName.trim()),
                 email = MultipartUploadHelper.textPart(email.trim()),
                 phone = MultipartUploadHelper.textPart(phone.trim()),
                 city = MultipartUploadHelper.textPart(city.trim()),
                 address = MultipartUploadHelper.textPart(storeAddress.trim()),
                 storeAddress = MultipartUploadHelper.textPart(storeAddress.trim()),
                 password = MultipartUploadHelper.textPart(password),
+                confirmPassword = MultipartUploadHelper.textPart(password),
+                passwordConfirmation = MultipartUploadHelper.textPart(password),
                 storeName = MultipartUploadHelper.textPart(storeName.trim()),
                 businessType = MultipartUploadHelper.textPart(businessType.trim()),
                 storeDescription = MultipartUploadHelper.textPart(storeDescription.trim()),
@@ -257,6 +324,15 @@ class AuthRepository(
                 storeImage = storeImgPart
             )
         }
+
+        var result = executeVendorRequest("register")
+        if (result is NetworkResult.Error && shouldRetryWithActionAlias(result)) {
+            val fallback = executeVendorRequest("register_vendor")
+            if (fallback is NetworkResult.Success) {
+                result = fallback
+            }
+        }
+
         return when (result) {
             is NetworkResult.Success -> mapAuthResponse(
                 response = result.data,
@@ -308,7 +384,7 @@ class AuthRepository(
         address: String
     ): NetworkResult<UserSession> {
         val current = sessionPreferences.getCurrentSession()
-        val result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+        var result = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
             api.updateProfile(
                 UpdateProfileRequestDto(
                     fullName = fullName.trim(),
@@ -317,6 +393,19 @@ class AuthRepository(
                     address = address.trim()
                 )
             )
+        }
+        if (result is NetworkResult.Error && shouldRetryAsFormPost(result)) {
+            val fallback = networkFactory.safeApiCall(PhpEndpointContract.FILE_AUTH) {
+                api.updateProfileForm(
+                    fullName = fullName.trim(),
+                    phone = phone.trim(),
+                    city = city.trim(),
+                    address = address.trim()
+                )
+            }
+            if (fallback is NetworkResult.Success) {
+                result = fallback
+            }
         }
         return when (result) {
             is NetworkResult.Success -> {
@@ -354,6 +443,28 @@ class AuthRepository(
             is NetworkResult.Error -> result
             NetworkResult.Loading -> NetworkResult.Loading
         }
+    }
+
+    private fun shouldRetryAsFormPost(error: NetworkResult.Error): Boolean {
+        if (error.type != NetworkErrorType.VALIDATION_ERROR) return false
+        val text = "${error.arabicMessage} ${error.technicalDetail}".lowercase()
+        return text.contains("required") ||
+            text.contains("missing") ||
+            text.contains("empty") ||
+            text.contains("json") ||
+            text.contains("مطلوب") ||
+            text.contains("فارغ") ||
+            text.contains("غير مكتمل")
+    }
+
+    private fun shouldRetryWithActionAlias(error: NetworkResult.Error): Boolean {
+        if (error.type != NetworkErrorType.VALIDATION_ERROR) return false
+        val text = "${error.arabicMessage} ${error.technicalDetail}".lowercase()
+        return text.contains("action") ||
+            text.contains("إجراء") ||
+            text.contains("العملية") ||
+            text.contains("unsupported") ||
+            text.contains("unknown")
     }
 
     suspend fun logout() {

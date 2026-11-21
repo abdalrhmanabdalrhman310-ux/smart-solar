@@ -504,35 +504,60 @@ class NetworkClientFactory(
                 needsPhpConfirmation = needsPhpConfirmation
             )
         } catch (e: HttpException) {
+            val rawErrorBody = runCatching { e.response()?.errorBody()?.string() }.getOrNull().orEmpty()
+            val extracted = extractServerErrorDetails(rawErrorBody)
+            val serverMsg = extracted.message
+            val detail = rawErrorBody.take(300).ifBlank { "HTTP ${e.code()} ${e.message()}" }
+
+            if (e.code() == 401 || extracted.sessionExpired) {
+                _sessionExpiredEvents.tryEmit(Unit)
+                return NetworkResult.Error(
+                    type = NetworkErrorType.UNAUTHORIZED_SESSION_EXPIRED,
+                    arabicMessage = serverMsg.ifBlank { "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً." },
+                    technicalDetail = detail,
+                    phpEndpoint = endpointName
+                )
+            }
+
             when (e.code()) {
-                401 -> {
-                    _sessionExpiredEvents.tryEmit(Unit)
-                    NetworkResult.Error(
-                        type = NetworkErrorType.UNAUTHORIZED_SESSION_EXPIRED,
-                        arabicMessage = "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً.",
-                        technicalDetail = "HTTP 401",
-                        phpEndpoint = endpointName
-                    )
-                }
+                400, 409, 422 -> NetworkResult.Error(
+                    type = NetworkErrorType.VALIDATION_ERROR,
+                    arabicMessage = if (serverMsg.isNotBlank()) {
+                        "$serverMsg (رمز ${e.code()})"
+                    } else {
+                        "طلب غير مكتمل أو بيانات غير صالحة (رمز ${e.code()}) أثناء الاتصال بـ $endpointName."
+                    },
+                    technicalDetail = detail,
+                    phpEndpoint = endpointName,
+                    needsPhpConfirmation = serverMsg.isBlank() && needsPhpConfirmation
+                )
                 403 -> NetworkResult.Error(
                     type = NetworkErrorType.FORBIDDEN_OR_PENDING_APPROVAL,
-                    arabicMessage = "لا تملك صلاحية تنفيذ هذه العملية أو أن حسابك بانتظار موافقة الإدارة.",
-                    technicalDetail = "HTTP 403",
+                    arabicMessage = serverMsg.ifBlank {
+                        "لا تملك صلاحية تنفيذ هذه العملية أو أن حسابك بانتظار موافقة الإدارة."
+                    },
+                    technicalDetail = detail,
                     phpEndpoint = endpointName
                 )
                 404 -> NetworkResult.Error(
                     type = NetworkErrorType.HTTP_NOT_FOUND,
-                    arabicMessage = "ملف API غير موجود على الخادم ($endpointName). تأكد من مسار solar-admin/api/.",
-                    technicalDetail = "HTTP 404",
+                    arabicMessage = serverMsg.ifBlank {
+                        "ملف API غير موجود على الخادم ($endpointName). تأكد من مسار solar-admin/api/."
+                    },
+                    technicalDetail = detail,
                     phpEndpoint = endpointName,
                     needsPhpConfirmation = true
                 )
                 else -> NetworkResult.Error(
                     type = NetworkErrorType.SERVER_ERROR,
-                    arabicMessage = "خطأ من الخادم (رمز ${e.code()}) أثناء الاتصال بـ $endpointName.",
-                    technicalDetail = e.message(),
+                    arabicMessage = if (serverMsg.isNotBlank()) {
+                        "$serverMsg (رمز ${e.code()})"
+                    } else {
+                        "خطأ من الخادم (رمز ${e.code()}) أثناء الاتصال بـ $endpointName."
+                    },
+                    technicalDetail = detail,
                     phpEndpoint = endpointName,
-                    needsPhpConfirmation = needsPhpConfirmation
+                    needsPhpConfirmation = serverMsg.isBlank() && needsPhpConfirmation
                 )
             }
         } catch (e: Exception) {
@@ -637,6 +662,49 @@ class NetworkClientFactory(
                     else -> clean
                 }
             }.getOrDefault(clean)
+        }
+
+        internal data class ExtractedServerError(
+            val message: String,
+            val sessionExpired: Boolean = false
+        )
+
+        internal fun extractServerErrorDetails(rawBody: String): ExtractedServerError {
+            val clean = rawBody.trimStart('\uFEFF').trim()
+            if (clean.isBlank()) return ExtractedServerError("")
+            if (clean.startsWith("{")) {
+                val parsed = runCatching { genericJsonAdapter.fromJson(clean) as? Map<*, *> }.getOrNull()
+                if (parsed != null) {
+                    val expired = parsed["session_expired"].let {
+                        it == true || it?.toString()?.trim()?.lowercase() in setOf("true", "1")
+                    }
+                    val direct = listOf("message", "error", "msg", "detail")
+                        .firstNotNullOfOrNull { key ->
+                            parsed[key]?.toString()?.trim()?.takeIf { it.isNotBlank() && it != "null" }
+                        }
+                    val errorsText = when (val errs = parsed["errors"]) {
+                        is List<*> -> errs.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }
+                            .joinToString(" - ")
+                        is Map<*, *> -> errs.values.flatMap { value ->
+                            when (value) {
+                                is List<*> -> value.mapNotNull { it?.toString()?.trim() }
+                                else -> listOfNotNull(value?.toString()?.trim())
+                            }
+                        }.filter(String::isNotBlank).joinToString(" - ")
+                        else -> ""
+                    }
+                    val combined = listOfNotNull(
+                        direct,
+                        errorsText.takeIf { it.isNotBlank() && it != direct }
+                    ).joinToString(" — ")
+                    return ExtractedServerError(message = combined, sessionExpired = expired)
+                }
+            }
+            // Non-JSON plain text (avoid dumping raw HTML error pages to the user)
+            if (!clean.startsWith("<")) {
+                return ExtractedServerError(message = clean.take(240))
+            }
+            return ExtractedServerError("")
         }
     }
 }

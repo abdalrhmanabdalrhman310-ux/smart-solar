@@ -93,7 +93,7 @@ object MultipartUploadHelper {
     }
 
     fun textPart(value: String): RequestBody {
-        return value.toRequestBody("text/plain; charset=utf-8".toMediaTypeOrNull())
+        return value.toRequestBody(null)
     }
 
     private fun guessMimeFromUri(uri: Uri): String {
